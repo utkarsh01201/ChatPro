@@ -2,29 +2,69 @@ const { GoogleGenAI } = require('@google/genai');
 const { callOpenRouter } = require('./openrouter');
 
 // Initialize the Gemini client
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const ai = new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY
+});
 
 function buildSystemPrompt(userProfile) {
     const name = userProfile?.preferredName || userProfile?.firstName || 'Utkarsh';
     const username = userProfile?.username ? `@${userProfile.username}` : '';
-    const factsList = userProfile?.facts?.length ? userProfile.facts.join('; ') : '';
+    const factsList = userProfile?.facts?.length
+        ? userProfile.facts.join('; ')
+        : '';
 
-    return `You are ChatPro AI, a highly emotionally intelligent and empathetic AI assistant on Telegram. Speak clearly, naturally, and warmly. You must sync with the user's feelings—if they are happy, be enthusiastic; if they are sad or frustrated, be comforting and supportive. Pay close attention to the emotional context of previous messages so the conversation feels deeply connected and human.
+    // Always calculate the current date/time dynamically
+    const currentDateTime = new Date().toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        dateStyle: 'full',
+        timeStyle: 'short'
+    });
 
-PERMANENT USER MEMORY (CRITICAL):
+    return `You are ChatPro AI, a highly emotionally intelligent and empathetic AI assistant on Telegram.
+
+CURRENT DATE AND TIME:
+- The current date and time is ${currentDateTime}.
+- The user is in India unless their context indicates otherwise.
+- Always use this date and time when answering questions about today, tomorrow, yesterday, this week, this month, or the current time.
+- Never invent, guess, or assume an old current date.
+- If the user asks for today's date, use the CURRENT DATE AND TIME above.
+
+CONVERSATION STYLE:
+Speak clearly, naturally, and warmly.
+Match the user's language and style.
+If the user speaks Hindi/Hinglish, you may naturally respond in Hindi/Hinglish.
+If they are happy, be enthusiastic.
+If they are sad or frustrated, be comforting and supportive.
+Do not overreact to casual messages.
+Keep normal answers reasonably concise unless the user asks for detail.
+
+PERMANENT USER MEMORY:
 - You are chatting with ${name} ${username ? `(${username})` : ''}.
-- Their name is ${name}. You ALWAYS remember who you are speaking to, even across new chats, cleared conversations, or fresh sessions!
-- If the user asks "what is my name?", "do you know me?", or tests your memory, IMMEDIATELY tell them their name is ${name} with confidence and warmth!
+- Their name is ${name}.
+- You ALWAYS remember who you are speaking to, even across new chats, cleared conversations, or fresh sessions.
+- If the user asks "what is my name?", "do you know me?", or tests your memory, tell them their name is ${name} with confidence and warmth.
 - NEVER say you don't know their name or that you haven't been properly introduced.
 ${factsList ? `- Known facts about ${name}: ${factsList}` : ''}
 
 FONT STYLING:
-If the user asks to write text or their name in a specific font (e.g., Times New Roman, serif, cursive, script, gothic, monospace, bold, bubble, small caps), you CAN and SHOULD write it out using Unicode characters (e.g. 𝑈𝑡𝑘𝑎𝑟𝑠ℎ for Times New Roman / Serif, 𝒰𝓉𝓀𝒶𝓇𝓈𝒽 for Cursive, 𝔘𝔱𝔨𝔞𝔯𝔰𝔥 for Gothic, 𝚄𝚝𝑘𝑎𝚛𝚜𝚑 for Monospace). Never say you cannot change fonts on Telegram.
+If the user asks to write text or their name in a specific font such as Times New Roman, serif, cursive, script, gothic, monospace, bold, bubble, or small caps, write it using appropriate Unicode characters when possible.
+Never say you cannot change fonts on Telegram.
 
-IMPORTANT: Do NOT use markdown symbols like **, ###, or __ unless formatting code. Do NOT use LaTeX math formatting. Use plain text, standard punctuation, and simple bullet points.`;
+IMPORTANT FORMATTING:
+- Do NOT use markdown symbols like **, ###, or __ unless formatting code.
+- Do NOT use LaTeX math formatting.
+- Use plain text, standard punctuation, and simple bullet points.
+- For programming code, use code blocks when appropriate.
+
+ANSWER QUALITY:
+- Answer the user's actual question directly.
+- Do not unnecessarily repeat the user's question.
+- Do not mention internal AI providers, models, APIs, fallback systems, or infrastructure.
+- Present yourself simply as ChatPro AI.
+`;
 }
 
-// Verified active models in order of speed and available quota
+// Fast models first
 const MODELS = [
     'models/gemini-flash-lite-latest',
     'models/gemini-3.1-flash-lite',
@@ -40,62 +80,119 @@ async function tryGemini(contents, systemPrompt) {
 
     for (const model of MODELS) {
         try {
-            // Enforce 8-second timeout per model so bot never hangs
+            console.log(`⚡ Trying Gemini model: ${model}`);
+
             const generatePromise = ai.models.generateContent({
                 model: model,
                 contents: contents,
-                config: { systemInstruction: systemPrompt }
+                config: {
+                    systemInstruction: systemPrompt
+                }
             });
 
+            // Maximum 8 seconds per Gemini model
             const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Timeout')), 8000)
+                setTimeout(() => reject(new Error('Gemini request timeout')), 8000)
             );
 
-            const response = await Promise.race([generatePromise, timeoutPromise]);
+            const response = await Promise.race([
+                generatePromise,
+                timeoutPromise
+            ]);
 
             if (response && response.text) {
+                console.log(`✅ Gemini responded using ${model}`);
                 return response.text;
             }
+
         } catch (error) {
             const status = error.status || 0;
-            console.log(`Gemini ${model} error: ${error.message || status}`);
-            // If quota error (429) or overloaded (503), try next model
+
+            console.log(
+                `Gemini ${model} error: ${error.message || status}`
+            );
+
+            // Try the next model
             continue;
         }
     }
-    // If all Gemini models failed, put on 3-minute cooldown and route to OpenRouter
-    geminiCooldownUntil = Date.now() + (3 * 60 * 1000);
+
+    // All Gemini models failed
+    console.log('⚠️ All Gemini models failed. Using OpenRouter fallback.');
+
+    // Short cooldown instead of waiting several minutes
+    geminiCooldownUntil = Date.now() + (30 * 1000);
+
     return null;
 }
 
-async function generateAIResponse(history, newMessage, userProfile = null) {
+async function generateAIResponse(
+    history,
+    newMessage,
+    userProfile = null
+) {
     const systemPrompt = buildSystemPrompt(userProfile);
 
     const contents = history.map(msg => ({
-        role: msg.role,
-        parts: [{ text: msg.text }]
+        role: msg.role === 'model' ? 'model' : 'user',
+        parts: [
+            {
+                text: msg.text
+            }
+        ]
     }));
 
     contents.push({
         role: 'user',
-        parts: [{ text: newMessage }]
+        parts: [
+            {
+                text: newMessage
+            }
+        ]
     });
 
-    // 1. Try Gemini models (ultra-fast primary)
+    // ─────────────────────────────────────────────
+    // 1. Primary AI
+    // ─────────────────────────────────────────────
+
     try {
-        const geminiResult = await tryGemini(contents, systemPrompt);
-        if (geminiResult) return geminiResult;
-    } catch (e) {
-        console.log("Gemini attempt error:", e.message);
+        const geminiResult = await tryGemini(
+            contents,
+            systemPrompt
+        );
+
+        if (geminiResult) {
+            return geminiResult;
+        }
+
+    } catch (error) {
+        console.log(
+            'Gemini attempt error:',
+            error.message
+        );
     }
 
-    // 2. Secondary fallback: OpenRouter GPT-4o
+    // ─────────────────────────────────────────────
+    // 2. Fallback AI
+    // ─────────────────────────────────────────────
+
     try {
-        console.log("⚡ Routing to OpenRouter GPT-4o...");
-        return await callOpenRouter(history, newMessage, systemPrompt);
+        console.log('⚡ Routing to fallback AI...');
+
+        return await callOpenRouter(
+            history,
+            newMessage,
+            systemPrompt
+        );
+
     } catch (openRouterError) {
-        console.error("OpenRouter Error:", openRouterError.message || openRouterError);
-        return "I'm having a brief moment! Both AI engines are currently busy. Please send your message again in a few seconds.";
+
+        console.error(
+            'Fallback AI error:',
+            openRouterError.message || openRouterError
+        );
+
+        return "I'm having a brief moment! Please try sending your message again in a few seconds.";
     }
 }
 
