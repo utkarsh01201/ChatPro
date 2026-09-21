@@ -1,12 +1,12 @@
 {
   "name": "telegram-ai-bot",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "ChatPro AI Telegram bot",
+  "main": "src/bot.js",
   "scripts": {
     "start": "node src/bot.js",
     "dev": "node src/bot.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"No tests configured\""
   },
   "keywords": [],
   "author": "",
@@ -18,8 +18,5 @@
     "grammy": "^1.46.0",
     "mongoose": "^9.10.1",
     "sharp": "^0.35.4"
-    "scripts": {
-  "start": "node src/bot.js"
-}
   }
 }
