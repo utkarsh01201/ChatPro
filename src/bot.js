@@ -1,5 +1,6 @@
 require('dotenv').config();
-const { Bot, InputFile, InlineKeyboard } = require('grammy');
+const { Bot, InputFile, InlineKeyboard, webhookCallback } = require('grammy');
+const http = require('http');
 const path = require('path');
 const { generateAIResponse } = require('./ai');
 const { generateImage } = require('./image');
@@ -450,9 +451,59 @@ bot.on('message:text', async (ctx) => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-console.log('🤖 Bot is starting up...');
-bot.start({
-    onStart: (botInfo) => {
-        console.log(`✅ Successfully connected as @${botInfo.username}`);
+async function startBot() {
+    const renderUrl = process.env.RENDER_EXTERNAL_URL;
+    const port = parseInt(process.env.PORT) || 10000;
+
+    if (renderUrl) {
+        // ── Production: Webhook mode (Render) ──────────────────────────────────
+        const webhookPath = '/webhook';
+        const webhookUrl  = `${renderUrl}${webhookPath}`;
+
+        // Register webhook with Telegram
+        await bot.api.setWebhook(webhookUrl);
+        console.log(`🔗 Webhook registered: ${webhookUrl}`);
+
+        // Create HTTP server to receive Telegram updates
+        const handleUpdate = webhookCallback(bot, 'http');
+        const server = http.createServer(async (req, res) => {
+            if (req.method === 'POST' && req.url === webhookPath) {
+                await handleUpdate(req, res);
+            } else if (req.url === '/health') {
+                // Health-check endpoint for Render
+                res.writeHead(200);
+                res.end('OK');
+            } else {
+                res.writeHead(200);
+                res.end('ChatPro AI Bot is running.');
+            }
+        });
+
+        server.listen(port, '0.0.0.0', () => {
+            console.log(`🤖 Bot is starting up...`);
+            console.log(`✅ HTTP server listening on 0.0.0.0:${port}`);
+            console.log(`🚀 Running in WEBHOOK mode on Render`);
+        });
+
+        server.on('error', (err) => {
+            console.error('❌ Server error:', err);
+            process.exit(1);
+        });
+    } else {
+        // ── Development: Long-polling mode (local) ─────────────────────────────
+        // Remove any previously set webhook so polling works cleanly
+        await bot.api.deleteWebhook();
+        console.log(`🤖 Bot is starting up...`);
+        console.log(`🔄 Running in POLLING mode (local development)`);
+        bot.start({
+            onStart: (botInfo) => {
+                console.log(`✅ Successfully connected as @${botInfo.username}`);
+            }
+        });
     }
+}
+
+startBot().catch((err) => {
+    console.error('❌ Fatal startup error:', err);
+    process.exit(1);
 });
