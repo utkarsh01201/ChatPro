@@ -3,8 +3,7 @@ require('dotenv').config();
 const {
     Bot,
     InputFile,
-    InlineKeyboard,
-    webhookCallback
+    InlineKeyboard
 } = require('grammy');
 
 const http = require('http');
@@ -20,8 +19,7 @@ const {
 } = require('./image');
 
 const {
-    getAllFontStyles,
-    convertFont
+    getAllFontStyles
 } = require('./fonts');
 
 const {
@@ -31,42 +29,36 @@ const {
 const db = require('./db');
 
 
-// ─────────────────────────────────────────────────────────────
+// ============================================================
 // BOT
-// ─────────────────────────────────────────────────────────────
+// ============================================================
 
-const bot =
-    new Bot(process.env.TELEGRAM_BOT_TOKEN);
+const bot = new Bot(
+    process.env.TELEGRAM_BOT_TOKEN
+);
 
 
-// ─────────────────────────────────────────────────────────────
-// 🖼️ PENDING IMAGES
-// ─────────────────────────────────────────────────────────────
+// ============================================================
+// PENDING IMAGES
+// ============================================================
 
-// Stores the most recently received photo for each chat.
-//
+// Stores the latest image for each chat.
 // This allows:
 //
-// User:
-// [photo]
+// User: [photo]
+// User: What is this?
 //
-// User:
-// What is this?
-//
-// The bot knows that "What is this?" refers to
-// the previously sent photo.
+// The bot understands that the question refers to the photo.
 
 const pendingImages = new Map();
 
-
-// Keep images only for 5 minutes.
 const IMAGE_EXPIRY =
     5 * 60 * 1000;
 
 
-// ─────────────────────────────────────────────────────────────
+// ============================================================
 // MESSAGES
-// ─────────────────────────────────────────────────────────────
+// ============================================================
 
 const startMessage = `🤖 ChatPro AI — Help
 
@@ -129,9 +121,9 @@ Your AI. Your space. Your possibilities.
 🌟 @shiddatXXSociety`;
 
 
-// ─────────────────────────────────────────────────────────────
-// KEYBOARDS
-// ─────────────────────────────────────────────────────────────
+// ============================================================
+// KEYBOARD
+// ============================================================
 
 function buildStartKeyboard() {
 
@@ -165,12 +157,9 @@ function buildStartKeyboard() {
 }
 
 
-function buildLibraryKeyboard(
-    page,
-    totalPages
-) {
+function buildLibraryKeyboard(page, totalPages) {
 
-    const kb =
+    const keyboard =
         new InlineKeyboard();
 
     const hasPrev =
@@ -181,7 +170,7 @@ function buildLibraryKeyboard(
 
     if (hasPrev) {
 
-        kb.text(
+        keyboard.text(
             "⬅️ Prev",
             `btn_library_${page - 1}`
         );
@@ -190,7 +179,7 @@ function buildLibraryKeyboard(
 
     if (hasPrev && hasNext) {
 
-        kb.text(
+        keyboard.text(
             `${page + 1}/${totalPages}`,
             "btn_noop"
         );
@@ -199,30 +188,29 @@ function buildLibraryKeyboard(
 
     if (hasNext) {
 
-        kb.text(
+        keyboard.text(
             "Next ➡️",
             `btn_library_${page + 1}`
         );
 
     }
 
-    kb
+    keyboard
         .row()
         .text(
             "🏠 Back to Menu",
             "btn_backmenu"
         );
 
-    return kb;
+    return keyboard;
 }
 
 
-// ─────────────────────────────────────────────────────────────
+// ============================================================
 // START / HELP
-// ─────────────────────────────────────────────────────────────
+// ============================================================
 
 let cachedVideoFileId = null;
-
 
 bot.command(
     ['start', 'help'],
@@ -270,11 +258,11 @@ bot.command(
 
             }
 
-        } catch (e) {
+        } catch (error) {
 
             console.error(
                 "Failed to send video:",
-                e.message
+                error.message
             );
 
             await ctx.reply(
@@ -290,9 +278,9 @@ bot.command(
 );
 
 
-// ─────────────────────────────────────────────────────────────
+// ============================================================
 // NEW CHAT / CLEAR
-// ─────────────────────────────────────────────────────────────
+// ============================================================
 
 bot.command(
     ['newchat', 'clear'],
@@ -317,9 +305,9 @@ bot.command(
 );
 
 
-// ─────────────────────────────────────────────────────────────
+// ============================================================
 // ABOUT
-// ─────────────────────────────────────────────────────────────
+// ============================================================
 
 bot.command(
     'about',
@@ -333,9 +321,9 @@ bot.command(
 );
 
 
-// ─────────────────────────────────────────────────────────────
-// 🎨 IMAGE GENERATION
-// ─────────────────────────────────────────────────────────────
+// ============================================================
+// IMAGE GENERATION
+// ============================================================
 
 bot.command(
     'imagine',
@@ -347,7 +335,7 @@ bot.command(
         if (!prompt) {
 
             return ctx.reply(
-                "Please provide a prompt after /imagine\n\nExample: /imagine a futuristic city at night"
+                "Please provide a prompt after /imagine\n\nExample:\n/imagine a futuristic city at night"
             );
 
         }
@@ -366,9 +354,7 @@ bot.command(
                 buffer,
                 provider
             } =
-                await generateImage(
-                    prompt
-                );
+                await generateImage(prompt);
 
             const cleanPrompt =
                 prompt.length > 200
@@ -409,11 +395,11 @@ bot.command(
                 )
                 .catch(() => {});
 
-        } catch (e) {
+        } catch (error) {
 
             console.error(
                 "Image generation error:",
-                e.message
+                error.message
             );
 
             await ctx.api
@@ -430,9 +416,9 @@ bot.command(
 );
 
 
-// ─────────────────────────────────────────────────────────────
-// 🔤 FONT GENERATOR
-// ─────────────────────────────────────────────────────────────
+// ============================================================
+// FONT GENERATOR
+// ============================================================
 
 bot.command(
     ['font', 'fonts'],
@@ -444,7 +430,7 @@ bot.command(
         if (!text) {
 
             return ctx.reply(
-                "🔤 Font Generator\n\nUsage: /font [your text]\nExample: /font Utkarsh\nExample: /font Hello World"
+                "🔤 Font Generator\n\nUsage:\n/font [your text]\n\nExample:\n/font Utkarsh\n/font Hello World"
             );
 
         }
@@ -455,8 +441,8 @@ bot.command(
         const formatted =
             styles
                 .map(
-                    s =>
-                        `${s.name}:\n\`${s.text}\``
+                    style =>
+                        `${style.name}:\n\`${style.text}\``
                 )
                 .join('\n\n');
 
@@ -474,9 +460,9 @@ bot.command(
 );
 
 
-// ─────────────────────────────────────────────────────────────
+// ============================================================
 // TELEGRAM PHOTO DOWNLOAD
-// ─────────────────────────────────────────────────────────────
+// ============================================================
 
 async function downloadTelegramPhoto(
     ctx,
@@ -496,10 +482,10 @@ async function downloadTelegramPhoto(
     const url =
         `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
 
-    const res =
+    const response =
         await fetch(url);
 
-    if (!res.ok) {
+    if (!response.ok) {
 
         throw new Error(
             "Could not download photo from Telegram."
@@ -507,22 +493,21 @@ async function downloadTelegramPhoto(
 
     }
 
+    const buffer =
+        Buffer.from(
+            await response.arrayBuffer()
+        );
+
     return {
-        buffer:
-            Buffer.from(
-                await res.arrayBuffer()
-            ),
-
-        mimeType:
-            'image/jpeg'
+        buffer,
+        mimeType: 'image/jpeg'
     };
-
 }
 
 
-// ─────────────────────────────────────────────────────────────
-// 🖼️ IMAGE EDITOR
-// ─────────────────────────────────────────────────────────────
+// ============================================================
+// IMAGE EDITOR COMMAND
+// ============================================================
 
 bot.command(
     ['text', 'name', 'addtext'],
@@ -539,7 +524,7 @@ bot.command(
         if (!replyPhoto) {
 
             return ctx.reply(
-                "🖼️ *Image Editor*\n\nReply to any photo with:\n`/text Your Name`\n\nOr send a photo with caption `/text Your Name`",
+                "🖼️ *Image Editor*\n\nReply to any photo with:\n`/text Your Name`\n\nOr send a photo with caption:\n`/text Your Name`",
                 {
                     parse_mode: "Markdown"
                 }
@@ -562,7 +547,7 @@ bot.command(
         try {
 
             const {
-                buffer: imageBuffer
+                buffer
             } =
                 await downloadTelegramPhoto(
                     ctx,
@@ -571,7 +556,7 @@ bot.command(
 
             const editedBuffer =
                 await overlayText(
-                    imageBuffer,
+                    buffer,
                     textToOverlay
                 );
 
@@ -596,11 +581,11 @@ bot.command(
                 )
                 .catch(() => {});
 
-        } catch (err) {
+        } catch (error) {
 
             console.error(
                 "Edit error:",
-                err.message
+                error.message
             );
 
             await ctx.api
@@ -617,26 +602,9 @@ bot.command(
 );
 
 
-// ─────────────────────────────────────────────────────────────
-// 🖼️ PHOTO HANDLER
-// ─────────────────────────────────────────────────────────────
-//
-// Handles:
-// 1. Photo + question/caption
-// 2. Photo without caption
-//
-// If photo has no caption, it gets stored.
-// The next normal text message can then ask a question
-// about that image.
-//
-// Example:
-//
-// [PHOTO]
-//
-// What is this?
-//
-// → Gemini Vision analyzes the photo.
-//
+// ============================================================
+// PHOTO HANDLER
+// ============================================================
 
 bot.on(
     'message:photo',
@@ -650,7 +618,7 @@ bot.on(
 
         try {
 
-            // Download photo immediately.
+            // Download image
             const {
                 buffer,
                 mimeType
@@ -660,7 +628,7 @@ bot.on(
                     ctx.message.photo
                 );
 
-            // Store latest image.
+            // Save latest image
             pendingImages.set(
                 chatId,
                 {
@@ -670,9 +638,9 @@ bot.on(
                 }
             );
 
-            // ─────────────────────────────────────
-            // NO CAPTION
-            // ─────────────────────────────────────
+            // ------------------------------------------------
+            // PHOTO WITHOUT CAPTION
+            // ------------------------------------------------
 
             if (!caption) {
 
@@ -684,19 +652,19 @@ bot.on(
             }
 
 
-            // ─────────────────────────────────────
-            // IMAGE EDIT COMMAND
-            // ─────────────────────────────────────
+            // ------------------------------------------------
+            // PHOTO + /TEXT
+            // ------------------------------------------------
 
-            const cmdMatch =
+            const editCommand =
                 caption.match(
                     /^\/(?:text|name|addtext|edit)(?:\s+(.*))?$/i
                 );
 
-            if (cmdMatch) {
+            if (editCommand) {
 
                 const textToOverlay =
-                    cmdMatch[1]?.trim() ||
+                    editCommand[1]?.trim() ||
                     "Utkarsh";
 
                 const placeholder =
@@ -733,11 +701,11 @@ bot.on(
                         )
                         .catch(() => {});
 
-                } catch (err) {
+                } catch (error) {
 
                     console.error(
                         "Photo edit error:",
-                        err.message
+                        error.message
                     );
 
                     await ctx.api
@@ -754,9 +722,9 @@ bot.on(
             }
 
 
-            // ─────────────────────────────────────
-            // IMAGE QUESTION
-            // ─────────────────────────────────────
+            // ------------------------------------------------
+            // PHOTO + QUESTION
+            // ------------------------------------------------
 
             const placeholder =
                 await ctx.reply(
@@ -780,9 +748,11 @@ bot.on(
                     )
                     .catch(
                         async () => {
+
                             await ctx.reply(
                                 answer
                             );
+
                         }
                     );
 
@@ -820,9 +790,9 @@ bot.on(
 );
 
 
-// ─────────────────────────────────────────────────────────────
-// BUTTON: HELP
-// ─────────────────────────────────────────────────────────────
+// ============================================================
+// HELP BUTTON
+// ============================================================
 
 bot.callbackQuery(
     "btn_help",
@@ -842,9 +812,9 @@ bot.callbackQuery(
 );
 
 
-// ─────────────────────────────────────────────────────────────
-// BUTTON: NEW CHAT
-// ─────────────────────────────────────────────────────────────
+// ============================================================
+// NEW CHAT BUTTON
+// ============================================================
 
 bot.callbackQuery(
     "btn_newchat",
@@ -873,9 +843,9 @@ bot.callbackQuery(
 );
 
 
-// ─────────────────────────────────────────────────────────────
-// BUTTON: HISTORY
-// ─────────────────────────────────────────────────────────────
+// ============================================================
+// HISTORY BUTTON
+// ============================================================
 
 bot.callbackQuery(
     "btn_history",
@@ -886,29 +856,205 @@ bot.callbackQuery(
         const chatId =
             ctx.chat.id.toString();
 
-        const chatDoc =
-            await db.getChatHistory(
-                chatId
+        try {
+
+            const chatDoc =
+                await db.getChatHistory(
+                    chatId
+                );
+
+            if (
+                !chatDoc.messages ||
+                chatDoc.messages.length === 0
+            ) {
+
+                return ctx.reply(
+                    "📜 No conversation history yet. Start chatting to build your history!"
+                );
+
+            }
+
+            const recent =
+                chatDoc.messages.slice(-10);
+
+            const summary =
+                recent
+                    .map(
+                        message =>
+                            `${message.role === 'user' ? '👤 You' : '🤖 AI'}: ${message.text.slice(0, 80)}${message.text.length > 80 ? '...' : ''}`
+                    )
+                    .join('\n');
+
+            await ctx.reply(
+                `📜 Recent Conversation History\n\n${summary}`,
+                {
+                    reply_markup:
+                        buildStartKeyboard()
+                }
             );
 
-        if (
-            !chatDoc.messages ||
-            chatDoc.messages.length === 0
-        ) {
+        } catch (error) {
 
-            return ctx.reply(
-                "📜 No conversation history yet. Start chatting to build your history!"
+    console.error(
+        "History error:",
+        error.message
+    );
+
+    await ctx.reply(
+        "❌ Couldn't load your conversation history right now."
+    );
+
+}
+
+}
+);
+
+
+// ============================================================
+// ABOUT BUTTON
+// ============================================================
+
+bot.callbackQuery(
+    "btn_about",
+    async (ctx) => {
+
+        await ctx.answerCallbackQuery();
+
+        await ctx.reply(
+            aboutMessage
+        );
+
+    }
+);
+
+
+// ============================================================
+// IMAGE LIBRARY
+// ============================================================
+
+bot.callbackQuery(
+    /^btn_library_(\d+)$/,
+    async (ctx) => {
+
+        await ctx.answerCallbackQuery();
+
+        const page =
+            Number(ctx.match[1]) || 0;
+
+        const chatId =
+            ctx.chat.id.toString();
+
+        try {
+
+            const {
+                images,
+                pages
+            } =
+                await db.getImageLibrary(
+                    chatId,
+                    page,
+                    5
+                );
+
+            if (
+                !images ||
+                images.length === 0
+            ) {
+
+                return ctx.reply(
+                    "🎨 Your image library is empty.\n\nUse /imagine to create your first AI image!"
+                );
+
+            }
+
+            for (const image of images) {
+
+                await ctx.replyWithPhoto(
+                    image.imageUrl,
+                    {
+                        caption:
+                            `🎨 ${image.prompt}`
+                    }
+                );
+
+            }
+
+            if (pages > 1) {
+
+                await ctx.reply(
+                    `📚 Image Library — Page ${page + 1}/${pages}`,
+                    {
+                        reply_markup:
+                            buildLibraryKeyboard(
+                                page,
+                                pages
+                            )
+                    }
+                );
+
+            } else {
+
+                await ctx.reply(
+                    "📚 Image Library",
+                    {
+                        reply_markup:
+                            buildLibraryKeyboard(
+                                page,
+                                pages || 1
+                            )
+                    }
+                );
+
+            }
+
+        } catch (error) {
+
+            console.error(
+                "Library error:",
+                error.message
+            );
+
+            await ctx.reply(
+                "❌ Couldn't load your image library."
             );
 
         }
 
-        const recent =
-            chatDoc.messages.slice(-10);
+    }
+);
 
-        const summary =
-            recent
-                .map(
-                    m =>
-                        `${m.role === 'user' ? '👤 You' : '🤖 AI'}: ${m.text.slice(0, 80)}${m.text.length > 80 ? '...' : ''}`
-                )
-                .join('\
+
+// ============================================================
+// NO-OP BUTTON
+// ============================================================
+
+bot.callbackQuery(
+    "btn_noop",
+    async (ctx) => {
+
+        await ctx.answerCallbackQuery();
+
+    }
+);
+
+
+// ============================================================
+// BACK TO MENU
+// ============================================================
+
+bot.callbackQuery(
+    "btn_backmenu",
+    async (ctx) => {
+
+        await ctx.answerCallbackQuery();
+
+        await ctx.reply(
+            startMessage,
+            {
+                reply_markup:
+                    buildStartKeyboard()
+            }
+        );
+
+    }
+);
