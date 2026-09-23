@@ -45,8 +45,7 @@ const bot = new Bot(
 
 const pendingImages = new Map();
 
-const IMAGE_EXPIRY =
-    5 * 60 * 1000;
+const IMAGE_EXPIRY = 5 * 60 * 1000;
 
 
 // ============================================================
@@ -69,11 +68,10 @@ function startTyping(ctx) {
 
     sendTyping();
 
-    const interval =
-        setInterval(
-            sendTyping,
-            4000
-        );
+    const interval = setInterval(
+        sendTyping,
+        4000
+    );
 
     return () => {
         clearInterval(interval);
@@ -82,7 +80,7 @@ function startTyping(ctx) {
 
 
 // ============================================================
-// MESSAGES
+// START MESSAGE
 // ============================================================
 
 const startMessage = `🤖 ChatPro AI — Help
@@ -135,6 +133,10 @@ Commands:
 🌟 Community
 👉 @shiddatXXSociety`;
 
+
+// ============================================================
+// ABOUT MESSAGE
+// ============================================================
 
 const aboutMessage = `🤖 ChatPro AI
 
@@ -193,11 +195,8 @@ function buildLibraryKeyboard(
     const keyboard =
         new InlineKeyboard();
 
-    const hasPrev =
-        page > 0;
-
-    const hasNext =
-        page < totalPages - 1;
+    const hasPrev = page > 0;
+    const hasNext = page < totalPages - 1;
 
     if (hasPrev) {
 
@@ -205,7 +204,6 @@ function buildLibraryKeyboard(
             "⬅️ Prev",
             `btn_library_${page - 1}`
         );
-
     }
 
     if (hasPrev && hasNext) {
@@ -214,7 +212,6 @@ function buildLibraryKeyboard(
             `${page + 1}/${totalPages}`,
             "btn_noop"
         );
-
     }
 
     if (hasNext) {
@@ -223,7 +220,6 @@ function buildLibraryKeyboard(
             "Next ➡️",
             `btn_library_${page + 1}`
         );
-
     }
 
     keyboard
@@ -321,9 +317,7 @@ bot.command(
             chatId
         );
 
-        pendingImages.delete(
-            chatId
-        );
+        pendingImages.delete(chatId);
 
         await ctx.reply(
             "🧹 Conversation cleared! Let's start fresh."
@@ -348,33 +342,7 @@ bot.command(
 
 
 // ============================================================
-// IMAGE GENERATION COMMAND
-// ============================================================
-
-bot.command(
-    'imagine',
-    async (ctx) => {
-
-        const prompt =
-            ctx.match?.trim();
-
-        if (!prompt) {
-
-            return ctx.reply(
-                "Please provide a prompt after /imagine\n\nExample:\n/imagine a futuristic city at night"
-            );
-        }
-
-        await generateAndSendImage(
-            ctx,
-            prompt
-        );
-    }
-);
-
-
-// ============================================================
-// AUTOMATIC IMAGE GENERATION DETECTION
+// IMAGE GENERATION DETECTOR
 // ============================================================
 
 function isImageGenerationRequest(text) {
@@ -390,21 +358,21 @@ function isImageGenerationRequest(text) {
 
         /\bmake\s+(an?\s+)?(image|picture|photo|art|artwork)\b/i,
 
-        /\bcreate\s+me\s+(a|an)?\s*/i,
+        /\bcreate\s+me\s+/i,
 
-        /\bgenerate\s+me\s+(a|an)?\s*/i,
+        /\bgenerate\s+me\s+/i,
 
-        /\bmake\s+me\s+(a|an)?\s*/i,
+        /\bmake\s+me\s+/i,
 
-        /\bdraw\s+(an?\s+)?(image|picture|photo|art|artwork)?/i,
+        /\bdraw\s+/i,
 
-        /\bshow\s+me\s+(an?\s+)?(image|picture|photo)\b/i
+        /\bshow\s+me\s+(an?\s+)?(image|picture|photo)\b/i,
 
+        /\bturn\s+this\s+into\s+an?\s+(image|picture|art)\b/i
     ];
 
     return patterns.some(
-        pattern =>
-            pattern.test(message)
+        pattern => pattern.test(message)
     );
 }
 
@@ -415,8 +383,7 @@ function isImageGenerationRequest(text) {
 
 function extractImagePrompt(text) {
 
-    let prompt =
-        text.trim();
+    let prompt = text.trim();
 
     prompt =
         prompt.replace(
@@ -430,12 +397,18 @@ function extractImagePrompt(text) {
             ''
         );
 
+    prompt =
+        prompt.replace(
+            /^(please\s+)?draw\s+(an?\s+)?/i,
+            ''
+        );
+
     return prompt.trim() || text.trim();
 }
 
 
 // ============================================================
-// GENERATE + SEND IMAGE
+// IMAGE GENERATION
 // ============================================================
 
 async function generateAndSendImage(
@@ -463,10 +436,7 @@ async function generateAndSendImage(
         const {
             buffer,
             provider
-        } =
-            await generateImage(
-                prompt
-            );
+        } = await generateImage(prompt);
 
         const cleanPrompt =
             prompt.length > 200
@@ -529,6 +499,32 @@ async function generateAndSendImage(
 
 
 // ============================================================
+// /IMAGINE
+// ============================================================
+
+bot.command(
+    'imagine',
+    async (ctx) => {
+
+        const prompt =
+            ctx.match?.trim();
+
+        if (!prompt) {
+
+            return ctx.reply(
+                "Please provide a prompt after /imagine\n\nExample:\n/imagine a futuristic city at night"
+            );
+        }
+
+        await generateAndSendImage(
+            ctx,
+            prompt
+        );
+    }
+);
+
+
+// ============================================================
 // FONT GENERATOR
 // ============================================================
 
@@ -542,7 +538,7 @@ bot.command(
         if (!text) {
 
             return ctx.reply(
-                "🔤 Font Generator\n\nUsage:\n/font [your text]\n\nExample:\n/font Utkarsh\n/font Hello World"
+                "🔤 Font Generator\n\nUsage:\n/font [your text]\n\nExample:\n/font Utkarsh"
             );
         }
 
@@ -585,6 +581,13 @@ async function downloadTelegramPhoto(
         await ctx.api.getFile(
             largest.file_id
         );
+
+    if (!file.file_path) {
+
+        throw new Error(
+            "Telegram did not return a photo path."
+        );
+    }
 
     const url =
         `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
@@ -653,11 +656,11 @@ async function downloadTelegramFile(
 
 
 // ============================================================
-// IMAGE EDITOR
+// IMAGE EDITOR COMMAND
 // ============================================================
 
 bot.command(
-    ['text', 'name', 'addtext'],
+    ['text', 'name', 'addtext', 'edit'],
     async (ctx) => {
 
         let textToOverlay =
@@ -671,7 +674,7 @@ bot.command(
         if (!replyPhoto) {
 
             return ctx.reply(
-                "🖼️ *Image Editor*\n\nReply to any photo with:\n`/text Your Name`\n\nOr send a photo with caption:\n`/text Your Name`",
+                "🖼️ Image Editor\n\nReply to any photo with:\n/text Your Name\n\nOr send a photo with caption:\n/text Your Name",
                 {
                     parse_mode: "Markdown"
                 }
@@ -680,8 +683,7 @@ bot.command(
 
         if (!textToOverlay) {
 
-            textToOverlay =
-                "Utkarsh";
+            textToOverlay = "Utkarsh";
         }
 
         const placeholder =
@@ -783,9 +785,8 @@ bot.on(
                 }
             );
 
-            // ------------------------------------------------
-            // NO CAPTION
-            // ------------------------------------------------
+
+            // PHOTO WITHOUT CAPTION
 
             if (!caption) {
 
@@ -796,9 +797,8 @@ bot.on(
                 return;
             }
 
-            // ------------------------------------------------
-            // PHOTO + /TEXT
-            // ------------------------------------------------
+
+            // PHOTO + IMAGE EDITOR
 
             const editCommand =
                 caption.match(
@@ -868,9 +868,8 @@ bot.on(
                 return;
             }
 
-            // ------------------------------------------------
+
             // PHOTO + QUESTION
-            // ------------------------------------------------
 
             const placeholder =
                 await ctx.reply(
@@ -897,16 +896,14 @@ bot.on(
                     )
                     .catch(
                         async () => {
-                            await ctx.reply(
-                                answer
-                            );
+                            await ctx.reply(answer);
                         }
                     );
 
             } catch (error) {
 
                 console.error(
-                    "Image analysis error:",
+                    "Photo analysis error:",
                     error.message
                 );
 
@@ -914,7 +911,7 @@ bot.on(
                     .editMessageText(
                         ctx.chat.id,
                         placeholder.message_id,
-                        "❌ I couldn't analyze this image right now. Please try again."
+                        "❌ I couldn't analyze that image right now."
                     )
                     .catch(() => {});
 
@@ -926,12 +923,12 @@ bot.on(
         } catch (error) {
 
             console.error(
-                "Photo download error:",
+                "Photo handler error:",
                 error.message
             );
 
             await ctx.reply(
-                "❌ I couldn't process that image. Please try sending it again."
+                "❌ I couldn't process that photo."
             );
         }
     }
@@ -951,7 +948,7 @@ bot.on(
 
         const placeholder =
             await ctx.reply(
-                "🎭 Studying your sticker..."
+                "🎭 Analyzing sticker..."
             );
 
         const stopTyping =
@@ -964,10 +961,10 @@ bot.on(
             let mimeType =
                 'image/png';
 
-            // Try thumbnail first
-            if (
-                sticker.thumbnail?.file_id
-            ) {
+
+            // TRY THUMBNAIL
+
+            if (sticker.thumbnail?.file_id) {
 
                 try {
 
@@ -993,7 +990,9 @@ bot.on(
                 }
             }
 
-            // Static sticker fallback
+
+            // TRY STATIC STICKER
+
             if (
                 !buffer &&
                 !sticker.is_animated &&
@@ -1024,12 +1023,14 @@ bot.on(
                 }
             }
 
+
             if (!buffer) {
 
                 throw new Error(
                     "No accessible sticker preview."
                 );
             }
+
 
             const prompt = `
 Analyze this Telegram sticker.
@@ -1057,12 +1058,14 @@ Keep the answer concise and natural.
 Use Telegram-friendly plain text.
 `;
 
+
             const answer =
                 await analyzeImage(
                     buffer,
                     mimeType,
                     prompt
                 );
+
 
             await ctx.api
                 .editMessageText(
@@ -1072,9 +1075,7 @@ Use Telegram-friendly plain text.
                 )
                 .catch(
                     async () => {
-                        await ctx.reply(
-                            answer
-                        );
+                        await ctx.reply(answer);
                     }
                 );
 
@@ -1137,9 +1138,7 @@ bot.callbackQuery(
             chatId
         );
 
-        pendingImages.delete(
-            chatId
-        );
+        pendingImages.delete(chatId);
 
         await ctx.answerCallbackQuery(
             "Chat cleared!"
@@ -1272,8 +1271,7 @@ bot.callbackQuery(
             }
 
             for (
-                const image
-                of images
+                const image of images
             ) {
 
                 await ctx.replyWithPhoto(
@@ -1312,7 +1310,7 @@ bot.callbackQuery(
 
 
 // ============================================================
-// NO-OP BUTTON
+// NO OP
 // ============================================================
 
 bot.callbackQuery(
@@ -1390,7 +1388,7 @@ bot.callbackQuery(
         await ctx.answerCallbackQuery();
 
         await ctx.reply(
-            "⚡ ChatPro Tips\n\n• Ask follow-up questions naturally\n• Send a photo and ask what is in it\n• Reply to a photo with a question\n• Send a sticker to analyze it\n• Ask naturally to create an image\n• Use /imagine for direct image generation\n• Use /font for stylish text\n• Use /text to edit photos"
+            "⚡ ChatPro Tips\n\n• Ask follow-up questions naturally\n• Send a photo and ask what is in it\n• Reply to a photo with a question\n• Reply to my text or your own text with a follow-up question\n• Send a sticker to analyze it\n• Ask naturally to create an image\n• Use /imagine for direct image generation\n• Use /font for stylish text\n• Use /text to edit photos"
         );
     }
 );
@@ -1414,7 +1412,7 @@ bot.callbackQuery(
 
 
 // ============================================================
-// TEXT MESSAGE HANDLER
+// MAIN TEXT HANDLER
 // ============================================================
 
 bot.on(
@@ -1424,28 +1422,27 @@ bot.on(
         const userMessage =
             ctx.message.text.trim();
 
+        if (!userMessage) return;
+
         // Ignore commands
         if (
             userMessage.startsWith('/')
         ) {
-
             return;
         }
 
         const chatId =
             ctx.chat.id.toString();
 
-
-        // ====================================================
-        // REPLY TO A PHOTO
-        // ====================================================
-
         const repliedMessage =
             ctx.message.reply_to_message;
 
-        if (
-            repliedMessage?.photo
-        ) {
+
+        // ====================================================
+        // 1. REPLY TO A PHOTO
+        // ====================================================
+
+        if (repliedMessage?.photo) {
 
             const placeholder =
                 await ctx.reply(
@@ -1481,10 +1478,7 @@ bot.on(
                     )
                     .catch(
                         async () => {
-
-                            await ctx.reply(
-                                answer
-                            );
+                            await ctx.reply(answer);
                         }
                     );
 
@@ -1513,7 +1507,7 @@ bot.on(
 
 
         // ====================================================
-        // AUTOMATIC IMAGE GENERATION
+        // 2. AUTOMATIC IMAGE GENERATION
         // ====================================================
 
         if (
@@ -1537,13 +1531,11 @@ bot.on(
 
 
         // ====================================================
-        // PENDING IMAGE
+        // 3. PENDING IMAGE
         // ====================================================
 
         const pending =
-            pendingImages.get(
-                chatId
-            );
+            pendingImages.get(chatId);
 
         if (pending) {
 
@@ -1555,9 +1547,7 @@ bot.on(
                 age <= IMAGE_EXPIRY
             ) {
 
-                pendingImages.delete(
-                    chatId
-                );
+                pendingImages.delete(chatId);
 
                 const placeholder =
                     await ctx.reply(
@@ -1584,10 +1574,7 @@ bot.on(
                         )
                         .catch(
                             async () => {
-
-                                await ctx.reply(
-                                    answer
-                                );
+                                await ctx.reply(answer);
                             }
                         );
 
@@ -1614,14 +1601,12 @@ bot.on(
                 return;
             }
 
-            pendingImages.delete(
-                chatId
-            );
+            pendingImages.delete(chatId);
         }
 
 
         // ====================================================
-        // NORMAL AI CHAT
+        // 4. NORMAL AI CHAT
         // ====================================================
 
         const stopTyping =
@@ -1653,27 +1638,61 @@ bot.on(
                     );
 
 
-            // ------------------------------------------------
+            // =================================================
             // REPLY CONTEXT
-            // ------------------------------------------------
+            // =================================================
 
             let messageForAI =
                 userMessage;
 
-            if (
-                repliedMessage?.text
-            ) {
 
-                messageForAI =
-                    `The user is replying to this previous message:
+            /*
+             * THIS IS THE IMPORTANT PART.
+             *
+             * Whether the replied message belongs to:
+             *
+             * 1. USER
+             * 2. BOT
+             *
+             * Telegram gives us:
+             *
+             * ctx.message.reply_to_message
+             *
+             * So we pass that message to the AI.
+             */
 
-"${repliedMessage.text.slice(0, 4000)}"
+            if (repliedMessage) {
 
-Now answer the user's new message:
+                let repliedText =
+                    repliedMessage.text ||
+                    repliedMessage.caption ||
+                    '';
 
+                if (repliedText) {
+
+                    // Keep context reasonably sized
+                    repliedText =
+                        repliedText.slice(
+                            0,
+                            5000
+                        );
+
+                    messageForAI =
+                        `The user is replying to this previous Telegram message:
+
+"${repliedText}"
+
+Now answer the user's new message naturally.
+
+User's new message:
 ${userMessage}`;
+                }
             }
 
+
+            // =================================================
+            // AI RESPONSE
+            // =================================================
 
             const answer =
                 await generateAIResponse(
@@ -1682,6 +1701,10 @@ ${userMessage}`;
                     profile
                 );
 
+
+            // =================================================
+            // SAVE CHAT
+            // =================================================
 
             await db.addMessages(
                 chatId,
@@ -1697,6 +1720,10 @@ ${userMessage}`;
                 ]
             );
 
+
+            // =================================================
+            // SEND REPLY
+            // =================================================
 
             await ctx.reply(
                 answer
