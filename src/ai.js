@@ -9,7 +9,7 @@ const sharp = require('sharp');
 
 
 // ============================================================
-// GEMINI - PRIMARY FOR NORMAL AI / IMAGE UNDERSTANDING
+// GEMINI
 // ============================================================
 
 const ai = new GoogleGenAI({
@@ -47,13 +47,22 @@ const GEMINI_COOLDOWN =
 
 
 // ============================================================
-// GROQ COOLDOWN
+// GROQ SETTINGS
+//
+// IMPORTANT:
+//
+// We intentionally DO NOT use a long Groq cooldown.
+//
+// If Groq returns 429, we immediately move to OpenRouter.
+//
+// This prevents the bot from sitting idle while waiting.
 // ============================================================
 
-let groqCooldownUntil = 0;
+const GROQ_MAX_HISTORY_MESSAGES = 4;
 
-const GROQ_COOLDOWN =
-    60 * 1000;
+const GROQ_MAX_MESSAGE_CHARS = 1200;
+
+const GROQ_MAX_OUTPUT_TOKENS = 1024;
 
 
 // ============================================================
@@ -191,7 +200,7 @@ function needsWebSearch(message) {
 
 
 // ============================================================
-// TELEGRAM RESPONSE FORMATTER
+// TELEGRAM FORMATTER
 // ============================================================
 
 function formatForTelegram(text) {
@@ -569,8 +578,11 @@ async function tryGemini(
 
             const response =
                 await ai.models.generateContent({
+
                     model,
+
                     contents,
+
                     config
                 });
 
@@ -625,7 +637,213 @@ async function tryGemini(
 
 
 // ============================================================
+// GROQ MESSAGE OPTIMIZER
+//
+// THIS IS THE IMPORTANT FIX.
+//
+// Instead of sending the complete conversation:
+//
+// 20 messages
+// 30 messages
+// 50 messages
+//
+// We only send the last 4 messages.
+//
+// Each old message is also limited to 1200 characters.
+//
+// This dramatically reduces input-token usage.
+// ============================================================
+
+function buildGroqMessages(
+    history,
+    newMessage,
+    systemPrompt
+) {
+
+    const messages = [
+
+        {
+            role:
+                'system',
+
+            content:
+                systemPrompt
+        }
+
+    ];
+
+
+    const cleanHistory =
+        Array.isArray(history)
+            ? history
+            : [];
+
+
+    const recentHistory =
+        cleanHistory.slice(
+            -GROQ_MAX_HISTORY_MESSAGES
+        );
+
+
+    for (
+        const message
+        of recentHistory
+    ) {
+
+        if (
+            !message ||
+            !message.text
+        ) {
+            continue;
+        }
+
+
+        let role =
+            'user';
+
+
+        if (
+            message.role === 'model' ||
+            message.role === 'assistant'
+        ) {
+
+            role =
+                'assistant';
+        }
+
+
+        let text =
+            String(
+                message.text
+            ).trim();
+
+
+        if (!text) {
+            continue;
+        }
+
+
+        if (
+            text.length >
+            GROQ_MAX_MESSAGE_CHARS
+        ) {
+
+            text =
+                text.slice(
+                    0,
+                    GROQ_MAX_MESSAGE_CHARS
+                ) +
+                '\n[Older message truncated]';
+        }
+
+
+        messages.push({
+
+            role,
+
+            content:
+                text
+        });
+    }
+
+
+    let currentMessage =
+        String(
+            newMessage || ''
+        ).trim();
+
+
+    if (
+        currentMessage.length >
+        GROQ_MAX_MESSAGE_CHARS
+    ) {
+
+        currentMessage =
+            currentMessage.slice(
+                0,
+                GROQ_MAX_MESSAGE_CHARS
+            ) +
+            '\n[Message truncated]';
+    }
+
+
+    if (currentMessage) {
+
+        messages.push({
+
+            role:
+                'user',
+
+            content:
+                currentMessage
+        });
+    }
+
+
+    return messages;
+}
+
+
+// ============================================================
+// GROQ RATE LIMIT LOGGER
+// ============================================================
+
+function logGroqRateLimits(
+    response
+) {
+
+    try {
+
+        const remainingTokens =
+            response.headers.get(
+                'x-ratelimit-remaining-tokens'
+            );
+
+        const resetTokens =
+            response.headers.get(
+                'x-ratelimit-reset-tokens'
+            );
+
+        const remainingRequests =
+            response.headers.get(
+                'x-ratelimit-remaining-requests'
+            );
+
+        const retryAfter =
+            response.headers.get(
+                'retry-after'
+            );
+
+
+        console.log(
+            '📊 Groq rate limit:',
+            {
+                remainingTokens,
+                resetTokens,
+                remainingRequests,
+                retryAfter
+            }
+        );
+
+    } catch {
+
+        // Ignore header parsing errors.
+    }
+}
+
+
+// ============================================================
 // GROQ FALLBACK
+//
+// IMPORTANT CHANGES:
+//
+// 1. Only last 4 history messages.
+// 2. Each message max 1200 chars.
+// 3. Output max 1024 tokens.
+// 4. include_reasoning=false.
+// 5. NO artificial 60-second cooldown.
+// 6. If 429 happens -> immediately return null.
+// 7. OpenRouter then gets a chance.
 // ============================================================
 
 async function tryGroq(
@@ -633,18 +851,6 @@ async function tryGroq(
     newMessage,
     systemPrompt
 ) {
-
-    if (
-        Date.now() <
-        groqCooldownUntil
-    ) {
-
-        console.log(
-            '⏳ Groq is temporarily on cooldown.'
-        );
-
-        return null;
-    }
 
     if (
         !process.env.GROQ_API_KEY
@@ -657,76 +863,34 @@ async function tryGroq(
         return null;
     }
 
+
     try {
 
         console.log(
             '🔄 BACKUP: Groq'
         );
 
-        const messages = [
 
-            {
-                role: 'system',
-                content:
-                    systemPrompt
-            }
+        const messages =
+            buildGroqMessages(
+                history,
+                newMessage,
+                systemPrompt
+            );
 
-        ];
 
-        for (
-            const message
-            of (
-                history || []
-            )
-        ) {
+        console.log(
+            `🧠 Groq context: ${messages.length} messages`
+        );
 
-            let role =
-                'user';
-
-            if (
-                message.role === 'model' ||
-                message.role === 'assistant'
-            ) {
-
-                role =
-                    'assistant';
-            }
-
-            if (
-                message.text &&
-                String(
-                    message.text
-                ).trim()
-            ) {
-
-                messages.push({
-
-                    role,
-
-                    content:
-                        String(
-                            message.text
-                        )
-                });
-            }
-        }
-
-        messages.push({
-
-            role: 'user',
-
-            content:
-                String(
-                    newMessage || ''
-                )
-        });
 
         const response =
             await fetch(
                 'https://api.groq.com/openai/v1/chat/completions',
                 {
 
-                    method: 'POST',
+                    method:
+                        'POST',
 
                     headers: {
 
@@ -749,20 +913,32 @@ async function tryGroq(
                                 0.7,
 
                             max_completion_tokens:
-                                2048
+                                GROQ_MAX_OUTPUT_TOKENS,
+
+                            include_reasoning:
+                                false
                         }),
 
                     signal:
                         AbortSignal.timeout(
-                            25000
+                            30000
                         )
                 }
             );
 
+
+        logGroqRateLimits(
+            response
+        );
+
+
         const raw =
             await response.text();
 
-        let data = null;
+
+        let data =
+            null;
+
 
         try {
 
@@ -777,49 +953,65 @@ async function tryGroq(
                 null;
         }
 
+
+        // ====================================================
+        // GROQ ERROR
+        // ====================================================
+
         if (!response.ok) {
 
             const errorMessage =
                 data?.error?.message ||
                 raw.slice(
                     0,
-                    500
+                    1000
                 ) ||
                 `HTTP ${response.status}`;
+
+
+            const retryAfter =
+                response.headers.get(
+                    'retry-after'
+                );
+
 
             console.error(
                 `❌ Groq HTTP ${response.status}: ${errorMessage}`
             );
 
-            const lowerError =
-                String(
-                    errorMessage
-                ).toLowerCase();
 
-            const quotaError =
-                response.status === 429 ||
-                lowerError.includes(
-                    'rate limit'
-                ) ||
-                lowerError.includes(
-                    'quota'
-                ) ||
-                lowerError.includes(
-                    'too many requests'
+            if (
+                response.status === 429
+            ) {
+
+                console.warn(
+                    `⏳ Groq rate limit reached. Server retry-after: ${retryAfter || 'not provided'}`
                 );
 
-            if (quotaError) {
 
-                groqCooldownUntil =
-                    Date.now() +
-                    GROQ_COOLDOWN;
+                // IMPORTANT:
+                //
+                // DO NOT WAIT HERE.
+                //
+                // Immediately return null so
+                // generateAIResponse() can use OpenRouter.
+                //
+
+                return null;
             }
+
 
             return null;
         }
 
+
+        // ====================================================
+        // GROQ SUCCESS
+        // ====================================================
+
         const answer =
             data?.choices?.[0]?.message?.content;
+
 
         if (
             !answer ||
@@ -828,12 +1020,18 @@ async function tryGroq(
             ).trim()
         ) {
 
+            console.warn(
+                '⚠️ Groq returned an empty response.'
+            );
+
             return null;
         }
+
 
         console.log(
             '✅ Groq response received.'
         );
+
 
         return formatForTelegram(
             String(
@@ -868,15 +1066,18 @@ async function generateAIResponse(
             newMessage
         );
 
+
     console.log(
         `🌐 Web search: ${useWebSearch ? 'ENABLED' : 'SKIPPED'}`
     );
+
 
     const systemPrompt =
         buildSystemPrompt(
             userProfile,
             useWebSearch
         );
+
 
     const contents =
         (history || []).map(
@@ -888,25 +1089,36 @@ async function generateAIResponse(
                         : 'user',
 
                 parts: [
+
                     {
                         text:
                             message.text
                     }
+
                 ]
             })
         );
 
+
     contents.push({
 
-        role: 'user',
+        role:
+            'user',
 
         parts: [
+
             {
                 text:
                     newMessage
             }
+
         ]
     });
+
+
+    // ========================================================
+    // 1. GEMINI
+    // ========================================================
 
     try {
 
@@ -916,6 +1128,7 @@ async function generateAIResponse(
                 systemPrompt,
                 useWebSearch
             );
+
 
         if (geminiResult) {
 
@@ -932,6 +1145,11 @@ async function generateAIResponse(
         );
     }
 
+
+    // ========================================================
+    // 2. GROQ
+    // ========================================================
+
     try {
 
         const groqResult =
@@ -940,6 +1158,7 @@ async function generateAIResponse(
                 newMessage,
                 systemPrompt
             );
+
 
         if (groqResult) {
 
@@ -956,11 +1175,17 @@ async function generateAIResponse(
         );
     }
 
+
+    // ========================================================
+    // 3. OPENROUTER
+    // ========================================================
+
     try {
 
         console.log(
             `🔄 BACKUP: OpenRouter${useWebSearch ? ' + Web Search' : ''}`
         );
+
 
         const answer =
             await callOpenRouter(
@@ -969,6 +1194,7 @@ async function generateAIResponse(
                 systemPrompt,
                 useWebSearch
             );
+
 
         return formatForTelegram(
             answer
@@ -980,6 +1206,7 @@ async function generateAIResponse(
             '❌ OpenRouter backup error:',
             error.message || error
         );
+
 
         return "I'm having a brief moment right now. Please try sending your message again in a few seconds.";
     }
@@ -1004,10 +1231,12 @@ async function analyzeImage(
         );
     }
 
+
     const base64Image =
         imageBuffer.toString(
             'base64'
         );
+
 
     if (
         shouldTryGemini()
@@ -1024,6 +1253,7 @@ async function analyzeImage(
                     `🖼️ PRIMARY: Gemini ${model} image analysis`
                 );
 
+
                 const response =
                     await ai.models.generateContent({
 
@@ -1032,14 +1262,18 @@ async function analyzeImage(
                         contents: [
 
                             {
+
                                 inlineData: {
+
                                     mimeType,
+
                                     data:
                                         base64Image
                                 }
                             },
 
                             {
+
                                 text: `
 You are ChatPro AI's visual understanding system.
 
@@ -1093,8 +1327,10 @@ Keep the response useful and natural.
 Do not output internal tags.
 `
                             }
+
                         ]
                     });
+
 
                 if (
                     response &&
@@ -1104,6 +1340,7 @@ Do not output internal tags.
                     console.log(
                         `✅ Gemini image analysis successful using ${model}`
                     );
+
 
                     return formatForTelegram(
                         response.text
@@ -1116,15 +1353,18 @@ Do not output internal tags.
                     error?.message ||
                     'unknown error';
 
+
                 console.error(
                     `❌ Gemini image ${model} failed:`,
                     errorMessage
                 );
 
+
                 const lowerError =
                     String(
                         errorMessage
                     ).toLowerCase();
+
 
                 const quotaError =
                     lowerError.includes('429') ||
@@ -1133,11 +1373,13 @@ Do not output internal tags.
                     lowerError.includes('rate limit') ||
                     lowerError.includes('too many requests');
 
+
                 if (quotaError) {
 
                     geminiCooldownUntil =
                         Date.now() +
                         GEMINI_COOLDOWN;
+
 
                     break;
                 }
@@ -1145,9 +1387,15 @@ Do not output internal tags.
         }
     }
 
+
+    // ========================================================
+    // OPENROUTER IMAGE ANALYSIS
+    // ========================================================
+
     console.log(
         '🔄 BACKUP: OpenRouter image analysis'
     );
+
 
     const answer =
         await analyzeImageWithOpenRouter(
@@ -1156,6 +1404,7 @@ Do not output internal tags.
             userQuestion
         );
 
+
     return formatForTelegram(
         answer
     );
@@ -1163,26 +1412,13 @@ Do not output internal tags.
 
 
 // ============================================================
-// CLOUDFLARE IMAGE EDITING
+// IMAGE EDITING
 //
-// PRIMARY IMAGE EDITOR
+// PRIMARY:
+// Cloudflare FLUX.1 Kontext Pro
 //
-// Uses:
-// FLUX.1 Kontext Pro
-//
-// Supports:
-// JPG
-// JPEG
-// PNG
-// WEBP
-// AVIF
-// TIFF
-// GIF
-// HEIC / HEIF where Sharp can decode
-//
-// Cloudflare receives the image as a base64 data URI.
-//
-// Gemini is only used as a fallback if Cloudflare fails.
+// FALLBACK:
+// Gemini 3.1 Flash Image
 // ============================================================
 
 async function editImage(
@@ -1198,6 +1434,7 @@ async function editImage(
         );
     }
 
+
     if (
         !editInstruction ||
         !String(
@@ -1210,19 +1447,24 @@ async function editImage(
         );
     }
 
+
     const originalMimeType =
         String(
-            mimeType || 'image/jpeg'
+            mimeType ||
+            'image/jpeg'
         ).toLowerCase();
+
 
     console.log(
         '🎨 IMAGE EDIT REQUEST'
     );
 
+
     console.log(
         '📦 Input MIME:',
         originalMimeType
     );
+
 
     console.log(
         '📝 Edit instruction:',
@@ -1243,6 +1485,7 @@ async function editImage(
                 editInstruction
             );
 
+
         if (
             cloudflareResult &&
             cloudflareResult.buffer
@@ -1257,6 +1500,7 @@ async function editImage(
             '❌ Cloudflare image editing failed:',
             error.message
         );
+
 
         console.log(
             '🔄 Trying Gemini image editing fallback...'
@@ -1277,6 +1521,7 @@ async function editImage(
                 editInstruction
             );
 
+
         if (
             geminiResult &&
             geminiResult.buffer
@@ -1294,10 +1539,6 @@ async function editImage(
     }
 
 
-    // ========================================================
-    // FINAL ERROR
-    // ========================================================
-
     throw new Error(
         'Image editing failed with both Cloudflare and Gemini.'
     );
@@ -1305,7 +1546,7 @@ async function editImage(
 
 
 // ============================================================
-// CLOUDFLARE FLUX KONTEXT PRO EDITOR
+// CLOUDFLARE FLUX KONTEXT PRO
 // ============================================================
 
 async function editImageWithCloudflare(
@@ -1317,8 +1558,10 @@ async function editImageWithCloudflare(
     const accountId =
         process.env.CLOUDFLARE_ACCOUNT_ID;
 
+
     const token =
         process.env.CLOUDFLARE_API_TOKEN;
+
 
     if (
         !accountId ||
@@ -1331,17 +1574,9 @@ async function editImageWithCloudflare(
     }
 
 
-    // ========================================================
-    // NORMALIZE INPUT
-    //
-    // Cloudflare accepts base64 image data.
-    //
-    // To maximize compatibility, unsupported image formats
-    // are converted to JPEG before sending.
-    // ========================================================
-
     let inputBuffer =
         imageBuffer;
+
 
     let inputMime =
         mimeType;
@@ -1371,17 +1606,11 @@ async function editImageWithCloudflare(
                 imageBuffer
             );
 
+
         inputMime =
             'image/jpeg';
     }
 
-
-    // ========================================================
-    // ALSO NORMALIZE HEIC / HEIF
-    //
-    // Sharp may decode them, but JPEG gives a safer request
-    // format for external image APIs.
-    // ========================================================
 
     if (
         inputMime === 'image/heic' ||
@@ -1392,6 +1621,7 @@ async function editImageWithCloudflare(
             await convertImageToJpeg(
                 imageBuffer
             );
+
 
         inputMime =
             'image/jpeg';
@@ -1407,10 +1637,6 @@ async function editImageWithCloudflare(
     const imageDataUri =
         `data:${inputMime};base64,${base64Image}`;
 
-
-    // ========================================================
-    // CLOUDflare endpoint
-    // ========================================================
 
     const url =
         `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run`;
@@ -1437,19 +1663,16 @@ ${editInstruction}
 EDITING REQUIREMENTS:
 
 - Use the provided image as the source.
-- Preserve the main subject unless the user explicitly asks to change it.
+- Preserve the main subject unless explicitly requested.
 - Preserve faces and identity when possible.
 - Preserve clothing unless explicitly requested.
-- Preserve the original composition where possible.
+- Preserve original composition where possible.
 - Preserve camera perspective.
 - Preserve lighting and overall visual style.
 - Integrate newly added people or objects naturally.
 - Match scale, perspective, lighting, shadows and color.
-- If adding a person, place them naturally into the requested location.
-- If modifying the background, keep the foreground subject consistent.
 - If removing an object, reconstruct the affected background naturally.
 - Make the result look like a realistic finished image.
-- Do not describe the changes.
 - Return the edited image.`,
 
             input_image:
@@ -1525,19 +1748,12 @@ EDITING REQUIREMENTS:
             ) ||
             `HTTP ${response.status}`;
 
-        console.error(
-            `❌ Cloudflare image edit HTTP ${response.status}: ${errorMessage}`
-        );
 
         throw new Error(
             `Cloudflare image editing failed: ${errorMessage}`
         );
     }
 
-
-    // ========================================================
-    // CLOUDFLARE RETURNS IMAGE URL
-    // ========================================================
 
     const imageUrl =
         data?.result?.image;
@@ -1551,6 +1767,7 @@ EDITING REQUIREMENTS:
         console.log(
             '☁️ Cloudflare returned image URL.'
         );
+
 
         const imageResponse =
             await fetch(
@@ -1606,10 +1823,6 @@ EDITING REQUIREMENTS:
         };
     }
 
-
-    // ========================================================
-    // SOME RESPONSES MAY CONTAIN BASE64 IMAGE DATA
-    // ========================================================
 
     const base64Output =
         data?.result?.image_base64 ||
@@ -1673,6 +1886,7 @@ EDITING REQUIREMENTS:
         '❌ Cloudflare returned no usable image.'
     );
 
+
     console.error(
         'Cloudflare response:',
         JSON.stringify(
@@ -1691,7 +1905,7 @@ EDITING REQUIREMENTS:
 
 
 // ============================================================
-// GEMINI IMAGE EDITING FALLBACK
+// GEMINI IMAGE EDIT FALLBACK
 // ============================================================
 
 async function editImageWithGemini(
@@ -1703,6 +1917,7 @@ async function editImageWithGemini(
     const apiKey =
         process.env.GEMINI_API_KEY;
 
+
     if (!apiKey) {
 
         throw new Error(
@@ -1711,12 +1926,9 @@ async function editImageWithGemini(
     }
 
 
-    // ========================================================
-    // ALWAYS USE JPEG FOR GEMINI FALLBACK
-    // ========================================================
-
     let inputBuffer =
         imageBuffer;
+
 
     let inputMime =
         mimeType;
@@ -1730,6 +1942,7 @@ async function editImageWithGemini(
             await convertImageToJpeg(
                 imageBuffer
             );
+
 
         inputMime =
             'image/jpeg';
@@ -1975,7 +2188,7 @@ IMPORTANT:
 
 
 // ============================================================
-// CONVERT ANY IMAGE TO JPEG
+// CONVERT IMAGE TO JPEG
 // ============================================================
 
 async function convertImageToJpeg(
@@ -2000,6 +2213,7 @@ async function convertImageToJpeg(
             '❌ Image JPEG conversion failed:',
             error.message
         );
+
 
         throw new Error(
             `Unable to convert image to JPEG: ${error.message}`
