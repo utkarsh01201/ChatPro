@@ -1,62 +1,280 @@
-async function generateImage(prompt) {
-    const hfToken = process.env.HUGGINGFACE_API_KEY;
+// ============================================================
+// ChatPro - AI Image Generation
+// Priority:
+// 1. Cloudflare Workers AI - FLUX.1 Schnell
+// 2. Hugging Face - Stable Diffusion 3 Medium
+// 3. Pollinations - fallback
+// ============================================================
 
-    // 1. Primary: Hugging Face (Stable Diffusion 3 Medium)
-    if (hfToken) {
+async function generateImage(prompt) {
+
+    // ========================================================
+    // 1. CLOUDFLARE WORKERS AI - FLUX.1 SCHNELL
+    // ========================================================
+
+    const cloudflareAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const cloudflareToken = process.env.CLOUDFLARE_API_TOKEN;
+
+    if (cloudflareAccountId && cloudflareToken) {
         try {
-            console.log(`🎨 [HuggingFace] Generating image for prompt: "${prompt}"...`);
-            const hfUrl = 'https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-3-medium-diffusers';
-            const response = await fetch(hfUrl, {
+            console.log(
+                `☁️ [Cloudflare FLUX] Generating image for: "${prompt}"`
+            );
+
+            const url =
+                `https://api.cloudflare.com/client/v4/accounts/${cloudflareAccountId}` +
+                `/ai/run/@cf/black-forest-labs/flux-1-schnell`;
+
+            const response = await fetch(url, {
                 method: 'POST',
+
                 headers: {
-                    'Authorization': `Bearer ${hfToken}`,
+                    'Authorization': `Bearer ${cloudflareToken}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ inputs: prompt }),
+
+                body: JSON.stringify({
+                    prompt: prompt,
+                    steps: 4,
+                    seed: Math.floor(Math.random() * 2147483647)
+                }),
+
                 signal: AbortSignal.timeout(30000)
             });
 
             if (response.ok) {
-                const buffer = Buffer.from(await response.arrayBuffer());
-                console.log(`✅ [HuggingFace] Image generated successfully (${buffer.length} bytes)`);
-                return {
-                    buffer,
-                    provider: 'Hugging Face (SD3 Medium)'
-                };
+
+                const data = await response.json();
+
+                if (
+                    data &&
+                    data.success &&
+                    data.result &&
+                    data.result.image
+                ) {
+
+                    const buffer = Buffer.from(
+                        data.result.image,
+                        'base64'
+                    );
+
+                    console.log(
+                        `✅ [Cloudflare FLUX] Image generated successfully (${buffer.length} bytes)`
+                    );
+
+                    return {
+                        buffer,
+                        provider: 'Cloudflare FLUX.1 Schnell'
+                    };
+                }
+
+                console.warn(
+                    '⚠️ Cloudflare response did not contain an image.'
+                );
+
+                console.warn(
+                    JSON.stringify(data).slice(0, 500)
+                );
+
             } else {
-                const errText = await response.text();
-                console.warn(`HuggingFace returned ${response.status}:`, errText.slice(0, 120));
+
+                const errorText = await response.text();
+
+                console.warn(
+                    `⚠️ Cloudflare returned ${response.status}:`,
+                    errorText.slice(0, 500)
+                );
             }
-        } catch (hfErr) {
-            console.warn(`HuggingFace generation failed:`, hfErr.message);
+
+        } catch (cloudflareError) {
+
+            console.warn(
+                `⚠️ Cloudflare generation failed: ${cloudflareError.message}`
+            );
         }
+    } else {
+
+        console.warn(
+            '⚠️ Cloudflare credentials not found. Skipping Cloudflare.'
+        );
     }
 
-    // 2. Secondary Fallback: Pollinations (Turbo / Flux / Standard)
-    console.log(`🎨 [Pollinations Fallback] Generating image...`);
+
+    // ========================================================
+    // 2. HUGGING FACE - STABLE DIFFUSION 3 MEDIUM
+    // ========================================================
+
+    const hfToken = process.env.HUGGINGFACE_API_KEY;
+
+    if (hfToken) {
+
+        try {
+
+            console.log(
+                `🤗 [Hugging Face] Generating image for: "${prompt}"`
+            );
+
+            const hfUrl =
+                'https://router.huggingface.co/hf-inference/models/' +
+                'stabilityai/stable-diffusion-3-medium-diffusers';
+
+            const response = await fetch(hfUrl, {
+
+                method: 'POST',
+
+                headers: {
+                    'Authorization': `Bearer ${hfToken}`,
+                    'Content-Type': 'application/json'
+                },
+
+                body: JSON.stringify({
+                    inputs: prompt
+                }),
+
+                signal: AbortSignal.timeout(30000)
+            });
+
+            if (response.ok) {
+
+                const contentType =
+                    response.headers.get('content-type') || '';
+
+                // Hugging Face normally returns image bytes
+                if (contentType.includes('image')) {
+
+                    const buffer = Buffer.from(
+                        await response.arrayBuffer()
+                    );
+
+                    console.log(
+                        `✅ [Hugging Face] Image generated successfully (${buffer.length} bytes)`
+                    );
+
+                    return {
+                        buffer,
+                        provider: 'Hugging Face SD3'
+                    };
+                }
+
+                // Sometimes an API can return JSON even with 200
+                const text = await response.text();
+
+                console.warn(
+                    '⚠️ Hugging Face returned unexpected response:',
+                    text.slice(0, 300)
+                );
+
+            } else {
+
+                const errorText = await response.text();
+
+                console.warn(
+                    `⚠️ Hugging Face returned ${response.status}:`,
+                    errorText.slice(0, 300)
+                );
+            }
+
+        } catch (hfError) {
+
+            console.warn(
+                `⚠️ Hugging Face generation failed: ${hfError.message}`
+            );
+        }
+    } else {
+
+        console.warn(
+            '⚠️ HUGGINGFACE_API_KEY not found. Skipping Hugging Face.'
+        );
+    }
+
+
+    // ========================================================
+    // 3. POLLINATIONS FALLBACK
+    // ========================================================
+
+    console.log(
+        `🌸 [Pollinations] Trying fallback image generation...`
+    );
+
     const encodedPrompt = encodeURIComponent(prompt);
-    const models = ['turbo', 'flux', ''];
+
+    const models = [
+        'turbo',
+        'flux',
+        ''
+    ];
 
     for (const model of models) {
+
         try {
-            const modelParam = model ? `&model=${model}` : '';
-            const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=768&height=768&nologo=true&seed=${Date.now()}${modelParam}`;
-            const res = await fetch(url, { signal: AbortSignal.timeout(35000) });
-            if (res.ok) {
-                const buffer = Buffer.from(await res.arrayBuffer());
-                const modelName = model || 'default';
-                console.log(`✅ [Pollinations] Image generated successfully via ${modelName}`);
-                return {
-                    buffer,
-                    provider: `Pollinations (${modelName})`
-                };
+
+            const modelParam =
+                model ? `&model=${model}` : '';
+
+            const url =
+                `https://image.pollinations.ai/prompt/${encodedPrompt}` +
+                `?width=768` +
+                `&height=768` +
+                `&nologo=true` +
+                `&seed=${Date.now()}` +
+                modelParam;
+
+            console.log(
+                `🎨 [Pollinations] Trying model: ${model || 'default'}`
+            );
+
+            const response = await fetch(url, {
+                method: 'GET',
+                signal: AbortSignal.timeout(35000)
+            });
+
+            if (response.ok) {
+
+                const buffer = Buffer.from(
+                    await response.arrayBuffer()
+                );
+
+                if (buffer.length > 1000) {
+
+                    console.log(
+                        `✅ [Pollinations] Image generated successfully using ${model || 'default'} (${buffer.length} bytes)`
+                    );
+
+                    return {
+                        buffer,
+                        provider:
+                            `Pollinations (${model || 'default'})`
+                    };
+                }
             }
-        } catch (e) {
-            console.log(`Pollinations model ${model || 'default'} failed: ${e.message}`);
+
+            console.warn(
+                `⚠️ Pollinations ${model || 'default'} returned ${response.status}`
+            );
+
+        } catch (pollinationsError) {
+
+            console.warn(
+                `⚠️ Pollinations ${model || 'default'} failed: ${pollinationsError.message}`
+            );
         }
     }
 
-    throw new Error("Unable to generate image with available providers.");
+
+    // ========================================================
+    // ALL PROVIDERS FAILED
+    // ========================================================
+
+    throw new Error(
+        'Unable to generate image with Cloudflare, Hugging Face, or Pollinations.'
+    );
 }
 
-module.exports = { generateImage };
+
+// ============================================================
+// EXPORT
+// ============================================================
+
+module.exports = {
+    generateImage
+};
