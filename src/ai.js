@@ -45,6 +45,16 @@ const GEMINI_COOLDOWN =
 
 
 // ============================================================
+// GROQ COOLDOWN
+// ============================================================
+
+let groqCooldownUntil = 0;
+
+const GROQ_COOLDOWN =
+    60 * 1000;
+
+
+// ============================================================
 // ADAPTIVE WEB SEARCH DETECTION
 // ============================================================
 
@@ -1333,7 +1343,7 @@ function shouldTryGemini() {
     ) {
 
         console.log(
-            '⏳ Gemini temporarily on cooldown. Using OpenRouter.'
+            '⏳ Gemini temporarily on cooldown. Skipping Gemini.'
         );
 
         return false;
@@ -1578,11 +1588,281 @@ async function tryGemini(
 
 
     console.log(
-        '⚠️ Gemini unavailable. Switching to OpenRouter backup.'
+        '⚠️ Gemini unavailable. Switching to Groq.'
     );
 
 
     return null;
+}
+
+
+// ============================================================
+// GROQ FALLBACK
+// ============================================================
+
+function shouldTryGroq() {
+
+    if (!process.env.GROQ_API_KEY) {
+
+        console.log(
+            '⚠️ GROQ_API_KEY is missing.'
+        );
+
+        return false;
+    }
+
+
+    if (
+        Date.now() <
+        groqCooldownUntil
+    ) {
+
+        console.log(
+            '⏳ Groq temporarily on cooldown. Skipping Groq.'
+        );
+
+        return false;
+    }
+
+
+    return true;
+}
+
+
+// ============================================================
+// GROQ TEXT RESPONSE
+// ============================================================
+
+async function tryGroq(
+    history,
+    newMessage,
+    systemPrompt
+) {
+
+    if (!shouldTryGroq()) {
+        return null;
+    }
+
+
+    try {
+
+        console.log(
+            '⚡ FALLBACK: Trying Groq openai/gpt-oss-20b'
+        );
+
+
+        const messages = [
+
+            {
+                role: 'system',
+                content: systemPrompt
+            }
+
+        ];
+
+
+        for (
+            const message
+            of (history || [])
+        ) {
+
+            let role = 'user';
+
+
+            if (
+                message.role === 'model' ||
+                message.role === 'assistant'
+            ) {
+
+                role = 'assistant';
+
+            }
+
+
+            if (
+                message.text &&
+                String(
+                    message.text
+                ).trim()
+            ) {
+
+                messages.push({
+
+                    role,
+
+                    content:
+                        String(
+                            message.text
+                        )
+
+                });
+
+            }
+
+        }
+
+
+        messages.push({
+
+            role: 'user',
+
+            content:
+                String(
+                    newMessage || ''
+                )
+
+        });
+
+
+        const response =
+            await fetch(
+                'https://api.groq.com/openai/v1/chat/completions',
+                {
+
+                    method: 'POST',
+
+                    headers: {
+
+                        'Authorization':
+                            `Bearer ${process.env.GROQ_API_KEY}`,
+
+                        'Content-Type':
+                            'application/json'
+
+                    },
+
+                    body:
+                        JSON.stringify({
+
+                            model:
+                                'openai/gpt-oss-20b',
+
+                            messages,
+
+                            temperature:
+                                0.7,
+
+                            max_completion_tokens:
+                                2048
+
+                        }),
+
+                    signal:
+                        AbortSignal.timeout(
+                            25000
+                        )
+
+                }
+            );
+
+
+        const raw =
+            await response.text();
+
+
+        let data = null;
+
+
+        try {
+
+            data =
+                JSON.parse(
+                    raw
+                );
+
+        } catch {
+
+            data = null;
+
+        }
+
+
+        if (!response.ok) {
+
+            const errorMessage =
+                data?.error?.message ||
+                raw.slice(0, 500) ||
+                `HTTP ${response.status}`;
+
+
+            console.error(
+                `❌ Groq HTTP ${response.status}: ${errorMessage}`
+            );
+
+
+            const lowerError =
+                String(
+                    errorMessage
+                ).toLowerCase();
+
+
+            const quotaError =
+                response.status === 429 ||
+                lowerError.includes(
+                    'rate limit'
+                ) ||
+                lowerError.includes(
+                    'quota'
+                ) ||
+                lowerError.includes(
+                    'too many requests'
+                );
+
+
+            if (quotaError) {
+
+                groqCooldownUntil =
+                    Date.now() +
+                    GROQ_COOLDOWN;
+
+            }
+
+
+            return null;
+        }
+
+
+        const answer =
+            data?.choices?.[0]?.message?.content;
+
+
+        if (
+            !answer ||
+            !String(
+                answer
+            ).trim()
+        ) {
+
+            console.error(
+                '❌ Groq returned an empty response.'
+            );
+
+            return null;
+        }
+
+
+        console.log(
+            '✅ Groq response received.'
+        );
+
+
+        return formatForTelegram(
+            String(
+                answer
+            )
+        );
+
+
+    } catch (error) {
+
+        console.error(
+            '❌ Groq fallback error:',
+            error.message || error
+        );
+
+
+        return null;
+    }
 }
 
 
@@ -1674,6 +1954,38 @@ async function generateAIResponse(
 
         console.error(
             'Gemini primary error:',
+            error.message || error
+        );
+
+    }
+
+
+    // ========================================================
+    // GROQ BACKUP
+    // ========================================================
+
+    try {
+
+        const groqResult =
+            await tryGroq(
+                history,
+                newMessage,
+                systemPrompt
+            );
+
+
+        if (groqResult) {
+
+            return formatForTelegram(
+                groqResult
+            );
+
+        }
+
+    } catch (error) {
+
+        console.error(
+            'Groq backup error:',
             error.message || error
         );
 
