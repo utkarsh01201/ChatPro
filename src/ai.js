@@ -2291,10 +2291,340 @@ Never output internal tags.
 
 
 // ============================================================
+// IMAGE EDITING - GEMINI 3.1 FLASH IMAGE
+// ============================================================
+
+async function editImage(
+    imageBuffer,
+    mimeType = 'image/jpeg',
+    editInstruction = ''
+) {
+
+    if (!imageBuffer) {
+
+        throw new Error(
+            'No image data received for editing.'
+        );
+
+    }
+
+
+    if (
+        !editInstruction ||
+        !String(editInstruction).trim()
+    ) {
+
+        throw new Error(
+            'No image editing instruction received.'
+        );
+
+    }
+
+
+    const apiKey =
+        process.env.GEMINI_API_KEY;
+
+
+    if (!apiKey) {
+
+        throw new Error(
+            'GEMINI_API_KEY is missing from environment variables.'
+        );
+
+    }
+
+
+    const base64Image =
+        imageBuffer.toString(
+            'base64'
+        );
+
+
+    console.log(
+        '🎨 IMAGE EDIT: Gemini 3.1 Flash Image'
+    );
+
+
+    console.log(
+        '📝 Edit instruction:',
+        editInstruction
+    );
+
+
+    const response =
+        await fetch(
+            'https://generativelanguage.googleapis.com/v1beta/interactions',
+            {
+
+                method: 'POST',
+
+                headers: {
+
+                    'x-goog-api-key':
+                        apiKey,
+
+                    'Content-Type':
+                        'application/json'
+
+                },
+
+                body:
+                    JSON.stringify({
+
+                        model:
+                            'gemini-3.1-flash-image',
+
+                        input: [
+
+                            {
+                                type:
+                                    'text',
+
+                                text:
+                                    `Edit the provided image according to the user's instruction.
+
+USER EDIT REQUEST:
+${editInstruction}
+
+IMPORTANT EDITING RULES:
+
+- Use the provided image as the source image.
+- Make only the requested changes.
+- Preserve the original composition unless the user asks otherwise.
+- Preserve the original people, faces, clothing, objects and main subject unless the user asks to change them.
+- Preserve the original camera perspective.
+- Preserve lighting and colors where possible.
+- If adding a person or object, integrate it naturally into the existing scene.
+- Match the added subject's scale, perspective, lighting, shadows and image quality.
+- If removing something, reconstruct the affected area naturally.
+- If changing the background, keep the main subject unchanged unless explicitly requested.
+- Make the result look like a natural photograph when the source image is photographic.
+- Do not return instructions or an explanation instead of the edited image.
+- Return the edited image.`
+
+                            },
+
+
+                            {
+                                type:
+                                    'image',
+
+                                mime_type:
+                                    mimeType,
+
+                                data:
+                                    base64Image
+
+                            }
+
+                        ],
+
+                        response_format: {
+
+                            type:
+                                'image',
+
+                            mime_type:
+                                'image/png',
+
+                            image_size:
+                                '1K'
+
+                        }
+
+                    }),
+
+                signal:
+                    AbortSignal.timeout(
+                        90000
+                    )
+
+            }
+        );
+
+
+    const raw =
+        await response.text();
+
+
+    let data = null;
+
+
+    try {
+
+        data =
+            JSON.parse(
+                raw
+            );
+
+    } catch {
+
+        data = null;
+
+    }
+
+
+    if (!response.ok) {
+
+        const errorMessage =
+            data?.error?.message ||
+            raw.slice(
+                0,
+                1000
+            ) ||
+            `HTTP ${response.status}`;
+
+
+        console.error(
+            `❌ Gemini image edit HTTP ${response.status}: ${errorMessage}`
+        );
+
+
+        throw new Error(
+            `Gemini image editing failed: ${errorMessage}`
+        );
+
+    }
+
+
+    // ========================================================
+    // PRIMARY OUTPUT
+    // ========================================================
+
+    const outputImage =
+        data?.output_image?.data;
+
+
+    if (
+        outputImage &&
+        typeof outputImage === 'string'
+    ) {
+
+        const buffer =
+            Buffer.from(
+                outputImage,
+                'base64'
+            );
+
+
+        if (
+            buffer.length > 1000
+        ) {
+
+            console.log(
+                `✅ Gemini image edit successful (${buffer.length} bytes)`
+            );
+
+
+            return {
+
+                buffer,
+
+                provider:
+                    'Gemini 3.1 Flash Image'
+
+            };
+
+        }
+
+    }
+
+
+    // ========================================================
+    // FALLBACK: SEARCH THROUGH STEPS
+    // ========================================================
+
+    const steps =
+        Array.isArray(
+            data?.steps
+        )
+            ? data.steps
+            : [];
+
+
+    for (
+        const step
+        of steps
+    ) {
+
+        const content =
+            Array.isArray(
+                step?.content
+            )
+                ? step.content
+                : [];
+
+
+        for (
+            const block
+            of content
+        ) {
+
+            if (
+                block?.type === 'image' &&
+                block?.data
+            ) {
+
+                const buffer =
+                    Buffer.from(
+                        block.data,
+                        'base64'
+                    );
+
+
+                if (
+                    buffer.length > 1000
+                ) {
+
+                    console.log(
+                        `✅ Gemini image edit successful from interaction step (${buffer.length} bytes)`
+                    );
+
+
+                    return {
+
+                        buffer,
+
+                        provider:
+                            'Gemini 3.1 Flash Image'
+
+                    };
+
+                }
+
+            }
+
+        }
+
+    }
+
+
+    console.error(
+        '❌ Gemini image edit returned no image.'
+    );
+
+
+    console.error(
+        'Gemini response:',
+        JSON.stringify(data).slice(
+            0,
+            2000
+        )
+    );
+
+
+    throw new Error(
+        'Gemini image editing returned no image.'
+    );
+}
+
+
+// ============================================================
 // EXPORTS
 // ============================================================
 
 module.exports = {
     generateAIResponse,
-    analyzeImage
+    analyzeImage,
+    editImage
 };
