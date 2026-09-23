@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// OpenRouter AI
+// OpenRouter AI - BACKUP PROVIDER
 // ─────────────────────────────────────────────────────────────
 
 const OPENROUTER_URL =
@@ -20,7 +20,6 @@ CONVERSATION STYLE:
 
 FONT STYLING:
 - If the user asks for a specific font style such as Times New Roman, serif, cursive, script, gothic, monospace, bold, bubble, or small caps, use appropriate Unicode characters.
-- Never say that you cannot change fonts on Telegram.
 
 FORMATTING:
 - Do NOT use markdown symbols like **, ###, or __ unless formatting code.
@@ -31,7 +30,7 @@ FORMATTING:
 IMPORTANT:
 - Answer the user's actual question directly.
 - Do not unnecessarily repeat the question.
-- Do not mention internal AI providers, models, APIs, fallback systems, or infrastructure.
+- Do not mention internal AI providers, models, APIs, fallback systems or infrastructure.
 - Present yourself simply as ChatPro AI.
 `;
 
@@ -46,7 +45,8 @@ async function callOpenRouter(
     customSystemPrompt = null
 ) {
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    const apiKey =
+        process.env.OPENROUTER_API_KEY;
 
     if (!apiKey) {
         throw new Error(
@@ -69,7 +69,6 @@ async function callOpenRouter(
                 message.role === 'model'
                     ? 'assistant'
                     : 'user',
-
             content: message.text
         })),
 
@@ -80,7 +79,7 @@ async function callOpenRouter(
     ];
 
     console.log(
-        `⚡ Sending request to OpenRouter: ${OPENROUTER_MODEL}`
+        `⚡ Using OpenRouter backup: ${OPENROUTER_MODEL}`
     );
 
     const response = await fetch(
@@ -104,20 +103,15 @@ async function callOpenRouter(
 
             body: JSON.stringify({
                 model: OPENROUTER_MODEL,
-
                 messages,
-
                 max_tokens: 1000,
-
                 temperature: 0.7
             })
         }
     );
 
-
     const responseText =
         await response.text();
-
 
     if (!response.ok) {
 
@@ -131,25 +125,18 @@ async function callOpenRouter(
         );
     }
 
-
     let data;
 
     try {
-
-        data =
-            JSON.parse(responseText);
-
+        data = JSON.parse(responseText);
     } catch (error) {
-
         throw new Error(
             'OpenRouter returned invalid JSON.'
         );
     }
 
-
     const answer =
         data?.choices?.[0]?.message?.content;
-
 
     if (!answer) {
 
@@ -163,18 +150,16 @@ async function callOpenRouter(
         );
     }
 
-
     console.log(
-        '✅ OpenRouter response received successfully.'
+        '✅ OpenRouter backup response received.'
     );
-
 
     return answer;
 }
 
 
 // ─────────────────────────────────────────────────────────────
-// IMAGE UNDERSTANDING
+// IMAGE UNDERSTANDING BACKUP
 // ─────────────────────────────────────────────────────────────
 
 async function analyzeImageWithOpenRouter(
@@ -189,10 +174,8 @@ async function analyzeImageWithOpenRouter(
         );
     }
 
-
     const apiKey =
         process.env.OPENROUTER_API_KEY;
-
 
     if (!apiKey) {
         throw new Error(
@@ -200,19 +183,15 @@ async function analyzeImageWithOpenRouter(
         );
     }
 
-
     const base64Image =
         imageBuffer.toString('base64');
-
 
     const imageDataUrl =
         `data:${mimeType};base64,${base64Image}`;
 
-
     console.log(
-        '🖼️ Sending image to OpenRouter...'
+        '🖼️ Using OpenRouter backup for image analysis...'
     );
-
 
     const response = await fetch(
         OPENROUTER_URL,
@@ -271,17 +250,14 @@ Rules:
 
                             {
                                 type: 'text',
-
-                                text:
-                                    userQuestion
+                                text: userQuestion
                             },
 
                             {
                                 type: 'image_url',
 
                                 image_url: {
-                                    url:
-                                        imageDataUrl
+                                    url: imageDataUrl
                                 }
                             }
 
@@ -294,10 +270,8 @@ Rules:
         }
     );
 
-
     const responseText =
         await response.text();
-
 
     if (!response.ok) {
 
@@ -311,52 +285,38 @@ Rules:
         );
     }
 
-
     let data;
 
     try {
-
-        data =
-            JSON.parse(responseText);
-
+        data = JSON.parse(responseText);
     } catch (error) {
-
         throw new Error(
             'OpenRouter returned invalid image response.'
         );
     }
 
-
     const answer =
         data?.choices?.[0]?.message?.content;
 
-
     if (!answer) {
-
-        console.error(
-            '❌ Invalid OpenRouter image response:',
-            JSON.stringify(data)
-        );
-
         throw new Error(
             'OpenRouter returned no image analysis.'
         );
     }
 
-
     console.log(
-        '✅ Image analyzed successfully using OpenRouter.'
+        '✅ OpenRouter image analysis successful.'
     );
-
 
     return answer;
 }
 
 
+// ─────────────────────────────────────────────────────────────
+// EXPORTS
+// ─────────────────────────────────────────────────────────────
+
 module.exports = {
-
     callOpenRouter,
-
     analyzeImageWithOpenRouter
-
 };
