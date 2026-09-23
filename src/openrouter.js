@@ -1,66 +1,362 @@
-const OPENROUTER_SYSTEM_INSTRUCTION = "You are ChatPro AI, a highly emotionally intelligent and empathetic AI assistant on Telegram. Speak clearly, naturally, and warmly. You must sync with the user's feelings—if they are happy, be enthusiastic; if they are sad or frustrated, be comforting and supportive. Pay close attention to the emotional context of previous messages so the conversation feels deeply connected and human. FONT STYLING: If the user asks to write text or their name in a specific font (e.g., Times New Roman, serif, cursive, script, gothic, monospace, bold, bubble, small caps), you CAN and SHOULD write it out using Unicode characters (e.g. 𝑈𝑡𝑘𝑎𝑟𝑠ℎ for Times New Roman / Serif, 𝒰𝓉𝓀𝒶𝓇𝓈𝒽 for Cursive, 𝔘𝔱𝔨𝔞𝔯𝔰𝔥 for Gothic, 𝚄𝚝𝚔α𝚛𝚜𝚑 for Monospace). Never say you cannot change fonts on Telegram. Do NOT use markdown symbols like **, ###, or __ unless formatting code blocks. Do NOT use LaTeX math formatting. Use plain text, standard punctuation, and simple bullet points.";
+// ─────────────────────────────────────────────────────────────
+// OpenRouter AI
+// ─────────────────────────────────────────────────────────────
 
-async function callOpenRouter(history, newMessage, customSystemPrompt = null) {
-    const systemPrompt = customSystemPrompt || OPENROUTER_SYSTEM_INSTRUCTION;
+const OPENROUTER_URL =
+    'https://openrouter.ai/api/v1/chat/completions';
+
+const OPENROUTER_MODEL =
+    'openrouter/free';
+
+const OPENROUTER_SYSTEM_INSTRUCTION = `
+You are ChatPro AI, a highly intelligent, helpful and natural AI assistant on Telegram.
+
+CONVERSATION STYLE:
+- Speak naturally and clearly.
+- Match the user's language.
+- If the user speaks Hindi or Hinglish, respond naturally in Hindi/Hinglish.
+- Be friendly and supportive.
+- Keep normal answers reasonably concise unless the user asks for detail.
+
+FONT STYLING:
+- If the user asks for a specific font style such as Times New Roman, serif, cursive, script, gothic, monospace, bold, bubble, or small caps, use appropriate Unicode characters.
+- Never say that you cannot change fonts on Telegram.
+
+FORMATTING:
+- Do NOT use markdown symbols like **, ###, or __ unless formatting code.
+- Do NOT use LaTeX formatting.
+- Use normal text and simple bullet points.
+- Code blocks are allowed for programming code.
+
+IMPORTANT:
+- Answer the user's actual question directly.
+- Do not unnecessarily repeat the question.
+- Do not mention internal AI providers, models, APIs, fallback systems, or infrastructure.
+- Present yourself simply as ChatPro AI.
+`;
+
+
+// ─────────────────────────────────────────────────────────────
+// TEXT CHAT
+// ─────────────────────────────────────────────────────────────
+
+async function callOpenRouter(
+    history,
+    newMessage,
+    customSystemPrompt = null
+) {
+
+    const apiKey = process.env.OPENROUTER_API_KEY;
+
+    if (!apiKey) {
+        throw new Error(
+            'OPENROUTER_API_KEY is missing from environment variables.'
+        );
+    }
+
+    const systemPrompt =
+        customSystemPrompt ||
+        OPENROUTER_SYSTEM_INSTRUCTION;
+
     const messages = [
-        { role: 'system', content: systemPrompt },
-        ...history.map(msg => ({
-            role: msg.role === 'model' ? 'assistant' : 'user',
-            content: msg.text
+        {
+            role: 'system',
+            content: systemPrompt
+        },
+
+        ...history.map(message => ({
+            role:
+                message.role === 'model'
+                    ? 'assistant'
+                    : 'user',
+
+            content: message.text
         })),
-        { role: 'user', content: newMessage }
+
+        {
+            role: 'user',
+            content: newMessage
+        }
     ];
 
-    const maxRetries = 2;
-    const baseDelay = 500;
-    let attempt = 0;
-    let response;
+    console.log(
+        `⚡ Sending request to OpenRouter: ${OPENROUTER_MODEL}`
+    );
 
-    while (attempt < maxRetries) {
-        try {
-            response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                    'HTTP-Referer': 'https://t.me/chat_pro_robot',
-                    'X-Title': 'ChatPro AI',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    model: 'openai/gpt-4o',
-                    max_tokens: 1000,
-                    messages: messages
-                })
-            });
+    const response = await fetch(
+        OPENROUTER_URL,
+        {
+            method: 'POST',
 
-            if (response.ok) break;
+            headers: {
+                'Authorization':
+                    `Bearer ${apiKey}`,
 
-            if (response.status === 429) {
-                const wait = baseDelay * Math.pow(2, attempt);
-                console.warn(`OpenRouter rate limited, retry ${attempt + 1}/${maxRetries} after ${wait}ms`);
-                await new Promise(r => setTimeout(r, wait));
-                attempt++;
-                continue;
-            }
-            break;
-        } catch (netErr) {
-            console.warn(`OpenRouter network error:`, netErr.message);
-            attempt++;
-            if (attempt >= maxRetries) throw netErr;
-            await new Promise(r => setTimeout(r, 500));
+                'Content-Type':
+                    'application/json',
+
+                'HTTP-Referer':
+                    'https://t.me/chat_pro_robot',
+
+                'X-Title':
+                    'ChatPro AI'
+            },
+
+            body: JSON.stringify({
+                model: OPENROUTER_MODEL,
+
+                messages,
+
+                max_tokens: 1000,
+
+                temperature: 0.7
+            })
         }
+    );
+
+
+    const responseText =
+        await response.text();
+
+
+    if (!response.ok) {
+
+        console.error(
+            `❌ OpenRouter HTTP ${response.status}:`,
+            responseText
+        );
+
+        throw new Error(
+            `OpenRouter HTTP ${response.status}: ${responseText}`
+        );
     }
 
-    if (!response || !response.ok) {
-        const errText = response ? await response.text() : 'No response';
-        throw new Error(`OpenRouter Error ${response ? response.status : 500}: ${errText}`);
+
+    let data;
+
+    try {
+
+        data =
+            JSON.parse(responseText);
+
+    } catch (error) {
+
+        throw new Error(
+            'OpenRouter returned invalid JSON.'
+        );
     }
 
-    const data = await response.json();
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error("Invalid response format from OpenRouter");
+
+    const answer =
+        data?.choices?.[0]?.message?.content;
+
+
+    if (!answer) {
+
+        console.error(
+            '❌ Invalid OpenRouter response:',
+            JSON.stringify(data)
+        );
+
+        throw new Error(
+            'OpenRouter returned no AI response.'
+        );
     }
-    return data.choices[0].message.content;
+
+
+    console.log(
+        '✅ OpenRouter response received successfully.'
+    );
+
+
+    return answer;
 }
 
-module.exports = { callOpenRouter };
+
+// ─────────────────────────────────────────────────────────────
+// IMAGE UNDERSTANDING
+// ─────────────────────────────────────────────────────────────
+
+async function analyzeImageWithOpenRouter(
+    imageBuffer,
+    mimeType = 'image/jpeg',
+    userQuestion = 'Describe this image in detail.'
+) {
+
+    if (!imageBuffer) {
+        throw new Error(
+            'No image data received.'
+        );
+    }
+
+
+    const apiKey =
+        process.env.OPENROUTER_API_KEY;
+
+
+    if (!apiKey) {
+        throw new Error(
+            'OPENROUTER_API_KEY is missing from environment variables.'
+        );
+    }
+
+
+    const base64Image =
+        imageBuffer.toString('base64');
+
+
+    const imageDataUrl =
+        `data:${mimeType};base64,${base64Image}`;
+
+
+    console.log(
+        '🖼️ Sending image to OpenRouter...'
+    );
+
+
+    const response = await fetch(
+        OPENROUTER_URL,
+        {
+            method: 'POST',
+
+            headers: {
+                'Authorization':
+                    `Bearer ${apiKey}`,
+
+                'Content-Type':
+                    'application/json',
+
+                'HTTP-Referer':
+                    'https://t.me/chat_pro_robot',
+
+                'X-Title':
+                    'ChatPro AI'
+            },
+
+            body: JSON.stringify({
+
+                model:
+                    OPENROUTER_MODEL,
+
+                max_tokens:
+                    1000,
+
+                messages: [
+
+                    {
+                        role: 'system',
+
+                        content: `
+You are ChatPro AI's image understanding system.
+
+Analyze the image carefully and answer the user's question.
+
+Rules:
+- Describe only what is actually visible.
+- Do not invent objects, people, text, locations or events.
+- If something is uncertain, clearly say that it is uncertain.
+- If the user asks "what is this?", identify the main subject.
+- If there is readable text, mention it.
+- If the image contains a screenshot, explain what is shown.
+- If the image contains an object, explain what the object appears to be.
+- Answer the user's specific question directly.
+- Keep the response natural and useful.
+`
+                    },
+
+                    {
+                        role: 'user',
+
+                        content: [
+
+                            {
+                                type: 'text',
+
+                                text:
+                                    userQuestion
+                            },
+
+                            {
+                                type: 'image_url',
+
+                                image_url: {
+                                    url:
+                                        imageDataUrl
+                                }
+                            }
+
+                        ]
+                    }
+
+                ]
+
+            })
+        }
+    );
+
+
+    const responseText =
+        await response.text();
+
+
+    if (!response.ok) {
+
+        console.error(
+            `❌ OpenRouter image HTTP ${response.status}:`,
+            responseText
+        );
+
+        throw new Error(
+            `OpenRouter image HTTP ${response.status}: ${responseText}`
+        );
+    }
+
+
+    let data;
+
+    try {
+
+        data =
+            JSON.parse(responseText);
+
+    } catch (error) {
+
+        throw new Error(
+            'OpenRouter returned invalid image response.'
+        );
+    }
+
+
+    const answer =
+        data?.choices?.[0]?.message?.content;
+
+
+    if (!answer) {
+
+        console.error(
+            '❌ Invalid OpenRouter image response:',
+            JSON.stringify(data)
+        );
+
+        throw new Error(
+            'OpenRouter returned no image analysis.'
+        );
+    }
+
+
+    console.log(
+        '✅ Image analyzed successfully using OpenRouter.'
+    );
+
+
+    return answer;
+}
+
+
+module.exports = {
+
+    callOpenRouter,
+
+    analyzeImageWithOpenRouter
+
+};
