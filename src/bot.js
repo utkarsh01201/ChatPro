@@ -49,6 +49,52 @@ const IMAGE_EXPIRY =
 
 
 // ============================================================
+// TELEGRAM TYPING INDICATOR
+// ============================================================
+
+function startTyping(ctx) {
+
+    const sendTyping = () => {
+
+        if (!ctx.chat?.id) {
+            return;
+        }
+
+        ctx.api
+            .sendChatAction(
+                ctx.chat.id,
+                'typing'
+            )
+            .catch(() => {});
+
+    };
+
+
+    // Start immediately
+    sendTyping();
+
+
+    // Telegram typing status expires quickly,
+    // so refresh it while processing.
+    const interval =
+        setInterval(
+            sendTyping,
+            4000
+        );
+
+
+    return () => {
+
+        clearInterval(
+            interval
+        );
+
+    };
+
+}
+
+
+// ============================================================
 // MESSAGES
 // ============================================================
 
@@ -149,7 +195,10 @@ function buildStartKeyboard() {
 }
 
 
-function buildLibraryKeyboard(page, totalPages) {
+function buildLibraryKeyboard(
+    page,
+    totalPages
+) {
 
     const keyboard =
         new InlineKeyboard();
@@ -340,6 +389,9 @@ bot.command(
                 "🎨 Creating your image with AI, please wait..."
             );
 
+        const stopTyping =
+            startTyping(ctx);
+
         try {
 
             const {
@@ -403,6 +455,10 @@ bot.command(
                     "Sorry, the image server is busy right now. Please try again in a moment!"
                 )
                 .catch(() => {});
+
+        } finally {
+
+            stopTyping();
 
         }
 
@@ -535,6 +591,9 @@ bot.command(
                 "✍️ Adding text to your image..."
             );
 
+        const stopTyping =
+            startTyping(ctx);
+
         try {
 
             const {
@@ -584,6 +643,10 @@ bot.command(
                 )
                 .catch(() => {});
 
+        } finally {
+
+            stopTyping();
+
         }
 
     }
@@ -624,7 +687,11 @@ bot.on(
                 }
             );
 
-            // Photo without caption
+
+            // ------------------------------------------------
+            // PHOTO WITHOUT CAPTION
+            // ------------------------------------------------
+
             if (!caption) {
 
                 await ctx.reply(
@@ -635,7 +702,10 @@ bot.on(
             }
 
 
-            // Photo + /text command
+            // ------------------------------------------------
+            // PHOTO + /TEXT COMMAND
+            // ------------------------------------------------
+
             const editCommand =
                 caption.match(
                     /^\/(?:text|name|addtext|edit)(?:\s+(.*))?$/i
@@ -651,6 +721,9 @@ bot.on(
                     await ctx.reply(
                         `✍️ Adding "${textToOverlay}" to your image...`
                     );
+
+                const stopTyping =
+                    startTyping(ctx);
 
                 try {
 
@@ -693,17 +766,27 @@ bot.on(
                         )
                         .catch(() => {});
 
+                } finally {
+
+                    stopTyping();
+
                 }
 
                 return;
             }
 
 
-            // Photo + question
+            // ------------------------------------------------
+            // PHOTO + QUESTION
+            // ------------------------------------------------
+
             const placeholder =
                 await ctx.reply(
                     "🖼️ Analyzing your image..."
                 );
+
+            const stopTyping =
+                startTyping(ctx);
 
             try {
 
@@ -744,6 +827,10 @@ bot.on(
                         "❌ I couldn't analyze this image right now. Please try again."
                     )
                     .catch(() => {});
+
+            } finally {
+
+                stopTyping();
 
             }
 
@@ -941,7 +1028,10 @@ bot.callbackQuery(
 
             }
 
-            for (const image of images) {
+            for (
+                const image
+                of images
+            ) {
 
                 await ctx.replyWithPhoto(
                     image.imageUrl,
@@ -1117,12 +1207,16 @@ bot.on(
         const userMessage =
             ctx.message.text.trim();
 
+
         // Commands are handled above
         if (
             userMessage.startsWith('/')
         ) {
+
             return;
+
         }
+
 
         const chatId =
             ctx.chat.id.toString();
@@ -1133,7 +1227,10 @@ bot.on(
         // ----------------------------------------------------
 
         const pending =
-            pendingImages.get(chatId);
+            pendingImages.get(
+                chatId
+            );
+
 
         if (pending) {
 
@@ -1141,16 +1238,25 @@ bot.on(
                 Date.now() -
                 pending.timestamp;
 
-            if (age <= IMAGE_EXPIRY) {
+
+            if (
+                age <= IMAGE_EXPIRY
+            ) {
 
                 pendingImages.delete(
                     chatId
                 );
 
+
                 const placeholder =
                     await ctx.reply(
                         "🖼️ Analyzing your image..."
                     );
+
+
+                const stopTyping =
+                    startTyping(ctx);
+
 
                 try {
 
@@ -1160,6 +1266,7 @@ bot.on(
                             pending.mimeType,
                             userMessage
                         );
+
 
                     await ctx.api
                         .editMessageText(
@@ -1177,12 +1284,14 @@ bot.on(
                             }
                         );
 
+
                 } catch (error) {
 
                     console.error(
                         "Pending image analysis error:",
                         error.message
                     );
+
 
                     await ctx.api
                         .editMessageText(
@@ -1192,20 +1301,33 @@ bot.on(
                         )
                         .catch(() => {});
 
+
+                } finally {
+
+                    stopTyping();
+
                 }
 
+
                 return;
+
             }
+
 
             pendingImages.delete(
                 chatId
             );
+
         }
 
 
         // ----------------------------------------------------
         // NORMAL AI CHAT
         // ----------------------------------------------------
+
+        const stopTyping =
+            startTyping(ctx);
+
 
         try {
 
@@ -1215,10 +1337,12 @@ bot.on(
                     ctx.from || {}
                 );
 
+
             const chatDoc =
                 await db.getChatHistory(
                     chatId
                 );
+
 
             const history =
                 chatDoc.messages
@@ -1232,12 +1356,14 @@ bot.on(
                         })
                     );
 
+
             const answer =
                 await generateAIResponse(
                     history,
                     userMessage,
                     profile
                 );
+
 
             await db.addMessages(
                 chatId,
@@ -1253,9 +1379,11 @@ bot.on(
                 ]
             );
 
+
             await ctx.reply(
                 answer
             );
+
 
         } catch (error) {
 
@@ -1264,9 +1392,15 @@ bot.on(
                 error.message
             );
 
+
             await ctx.reply(
                 "❌ Something went wrong while processing your message. Please try again."
             );
+
+
+        } finally {
+
+            stopTyping();
 
         }
 
@@ -1297,6 +1431,7 @@ bot.catch(
 const PORT =
     Number(process.env.PORT) || 3000;
 
+
 const server =
     http.createServer(
         (req, res) => {
@@ -1320,6 +1455,7 @@ const server =
 
                 return;
             }
+
 
             res.writeHead(
                 404,
