@@ -50,16 +50,14 @@ const IMAGE_EXPIRY =
 
 
 // ============================================================
-// TELEGRAM TYPING INDICATOR
+// TYPING INDICATOR
 // ============================================================
 
 function startTyping(ctx) {
 
     const sendTyping = () => {
 
-        if (!ctx.chat?.id) {
-            return;
-        }
+        if (!ctx.chat?.id) return;
 
         ctx.api
             .sendChatAction(
@@ -67,12 +65,9 @@ function startTyping(ctx) {
                 'typing'
             )
             .catch(() => {});
-
     };
 
-
     sendTyping();
-
 
     const interval =
         setInterval(
@@ -80,15 +75,9 @@ function startTyping(ctx) {
             4000
         );
 
-
     return () => {
-
-        clearInterval(
-            interval
-        );
-
+        clearInterval(interval);
     };
-
 }
 
 
@@ -122,10 +111,10 @@ Send me a photo and ask questions about it.
 Send me a sticker and I'll study its character, emotion, design and meaning.
 
 🎨 Image Generation
-Use /imagine [prompt] to generate AI images.
+Use /imagine [prompt] or simply ask me to create an image.
 
 🖼️ Image Editor
-Send or reply to any photo with /text [your text] to stamp your name on it!
+Send or reply to any photo with /text [your text] to add text.
 
 🔤 Font Styles
 Use /font [text] to stylize any text.
@@ -297,7 +286,6 @@ bot.command(
                 console.log(
                     "✅ Video file_id cached."
                 );
-
             }
 
         } catch (error) {
@@ -313,9 +301,7 @@ bot.command(
                     reply_markup: keyboard
                 }
             );
-
         }
-
     }
 );
 
@@ -342,7 +328,6 @@ bot.command(
         await ctx.reply(
             "🧹 Conversation cleared! Let's start fresh."
         );
-
     }
 );
 
@@ -358,13 +343,12 @@ bot.command(
         await ctx.reply(
             aboutMessage
         );
-
     }
 );
 
 
 // ============================================================
-// IMAGE GENERATION
+// IMAGE GENERATION COMMAND
 // ============================================================
 
 bot.command(
@@ -379,92 +363,169 @@ bot.command(
             return ctx.reply(
                 "Please provide a prompt after /imagine\n\nExample:\n/imagine a futuristic city at night"
             );
-
         }
 
-        const chatId =
-            ctx.chat.id.toString();
-
-        const placeholder =
-            await ctx.reply(
-                "🎨 Creating your image with AI, please wait..."
-            );
-
-        const stopTyping =
-            startTyping(ctx);
-
-        try {
-
-            const {
-                buffer,
-                provider
-            } =
-                await generateImage(
-                    prompt
-                );
-
-            const cleanPrompt =
-                prompt.length > 200
-                    ? prompt.slice(0, 197) + '...'
-                    : prompt;
-
-            const sent =
-                await ctx.replyWithPhoto(
-                    new InputFile(
-                        buffer,
-                        'generated.jpg'
-                    ),
-                    {
-                        caption:
-                            `🎨 Generated with ${provider}\n\nPrompt: "${cleanPrompt}"\n\n👨‍💻 by @Utkarsh12011`
-                    }
-                );
-
-            const fileId =
-                sent.photo?.[
-                    sent.photo.length - 1
-                ]?.file_id || '';
-
-            if (fileId) {
-
-                await db.saveImageToLibrary(
-                    chatId,
-                    prompt,
-                    fileId
-                );
-
-            }
-
-            await ctx.api
-                .deleteMessage(
-                    ctx.chat.id,
-                    placeholder.message_id
-                )
-                .catch(() => {});
-
-        } catch (error) {
-
-            console.error(
-                "Image generation error:",
-                error.message
-            );
-
-            await ctx.api
-                .editMessageText(
-                    ctx.chat.id,
-                    placeholder.message_id,
-                    "Sorry, the image server is busy right now. Please try again in a moment!"
-                )
-                .catch(() => {});
-
-        } finally {
-
-            stopTyping();
-
-        }
-
+        await generateAndSendImage(
+            ctx,
+            prompt
+        );
     }
 );
+
+
+// ============================================================
+// AUTOMATIC IMAGE GENERATION DETECTION
+// ============================================================
+
+function isImageGenerationRequest(text) {
+
+    const message =
+        text.toLowerCase().trim();
+
+    const patterns = [
+
+        /\bcreate\s+(an?\s+)?(image|picture|photo|art|artwork)\b/i,
+
+        /\bgenerate\s+(an?\s+)?(image|picture|photo|art|artwork)\b/i,
+
+        /\bmake\s+(an?\s+)?(image|picture|photo|art|artwork)\b/i,
+
+        /\bcreate\s+me\s+(a|an)?\s*/i,
+
+        /\bgenerate\s+me\s+(a|an)?\s*/i,
+
+        /\bmake\s+me\s+(a|an)?\s*/i,
+
+        /\bdraw\s+(an?\s+)?(image|picture|photo|art|artwork)?/i,
+
+        /\bshow\s+me\s+(an?\s+)?(image|picture|photo)\b/i
+
+    ];
+
+    return patterns.some(
+        pattern =>
+            pattern.test(message)
+    );
+}
+
+
+// ============================================================
+// EXTRACT IMAGE PROMPT
+// ============================================================
+
+function extractImagePrompt(text) {
+
+    let prompt =
+        text.trim();
+
+    prompt =
+        prompt.replace(
+            /^(please\s+)?(create|generate|make|draw)\s+(me\s+)?(an?\s+)?(image|picture|photo|art|artwork)\s*(of|showing|with|:)?\s*/i,
+            ''
+        );
+
+    prompt =
+        prompt.replace(
+            /^(please\s+)?(create|generate|make|draw)\s+me\s*/i,
+            ''
+        );
+
+    return prompt.trim() || text.trim();
+}
+
+
+// ============================================================
+// GENERATE + SEND IMAGE
+// ============================================================
+
+async function generateAndSendImage(
+    ctx,
+    prompt
+) {
+
+    const chatId =
+        ctx.chat.id.toString();
+
+    const placeholder =
+        await ctx.reply(
+            "🎨 Creating your image with AI, please wait..."
+        );
+
+    const stopTyping =
+        startTyping(ctx);
+
+    try {
+
+        console.log(
+            `🎨 Image generation request: ${prompt}`
+        );
+
+        const {
+            buffer,
+            provider
+        } =
+            await generateImage(
+                prompt
+            );
+
+        const cleanPrompt =
+            prompt.length > 200
+                ? prompt.slice(0, 197) + '...'
+                : prompt;
+
+        const sent =
+            await ctx.replyWithPhoto(
+                new InputFile(
+                    buffer,
+                    'generated.jpg'
+                ),
+                {
+                    caption:
+                        `🎨 Generated with ${provider}\n\nPrompt: "${cleanPrompt}"\n\n👨‍💻 by @Utkarsh12011`
+                }
+            );
+
+        const fileId =
+            sent.photo?.[
+                sent.photo.length - 1
+            ]?.file_id || '';
+
+        if (fileId) {
+
+            await db.saveImageToLibrary(
+                chatId,
+                prompt,
+                fileId
+            );
+        }
+
+        await ctx.api
+            .deleteMessage(
+                ctx.chat.id,
+                placeholder.message_id
+            )
+            .catch(() => {});
+
+    } catch (error) {
+
+        console.error(
+            "Image generation error:",
+            error.message
+        );
+
+        await ctx.api
+            .editMessageText(
+                ctx.chat.id,
+                placeholder.message_id,
+                "❌ I couldn't generate the image right now. Please try again."
+            )
+            .catch(() => {});
+
+    } finally {
+
+        stopTyping();
+    }
+}
 
 
 // ============================================================
@@ -483,7 +544,6 @@ bot.command(
             return ctx.reply(
                 "🔤 Font Generator\n\nUsage:\n/font [your text]\n\nExample:\n/font Utkarsh\n/font Hello World"
             );
-
         }
 
         const styles =
@@ -503,13 +563,12 @@ bot.command(
                 parse_mode: "Markdown"
             }
         );
-
     }
 );
 
 
 // ============================================================
-// TELEGRAM PHOTO DOWNLOAD
+// DOWNLOAD TELEGRAM PHOTO
 // ============================================================
 
 async function downloadTelegramPhoto(
@@ -538,17 +597,17 @@ async function downloadTelegramPhoto(
         throw new Error(
             "Could not download photo from Telegram."
         );
-
     }
 
-    const buffer =
-        Buffer.from(
-            await response.arrayBuffer()
-        );
-
     return {
-        buffer,
-        mimeType: 'image/jpeg'
+
+        buffer:
+            Buffer.from(
+                await response.arrayBuffer()
+            ),
+
+        mimeType:
+            'image/jpeg'
     };
 }
 
@@ -567,32 +626,25 @@ async function downloadTelegramFile(
             fileId
         );
 
-
     if (!file.file_path) {
 
         throw new Error(
             "Telegram did not return a file path."
         );
-
     }
-
 
     const url =
         `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
 
-
     const response =
         await fetch(url);
-
 
     if (!response.ok) {
 
         throw new Error(
             "Could not download Telegram file."
         );
-
     }
-
 
     return Buffer.from(
         await response.arrayBuffer()
@@ -601,411 +653,7 @@ async function downloadTelegramFile(
 
 
 // ============================================================
-// GET STICKER PREVIEW
-// ============================================================
-
-async function getStickerPreview(
-    ctx,
-    sticker
-) {
-
-    // ========================================================
-    // 1. DIRECT STICKER THUMBNAIL
-    // ========================================================
-
-    if (sticker.thumbnail?.file_id) {
-
-        try {
-
-            console.log(
-                "🎭 Using Telegram sticker thumbnail."
-            );
-
-
-            const thumbnailBuffer =
-                await downloadTelegramFile(
-                    ctx,
-                    sticker.thumbnail.file_id
-                );
-
-
-            const pngBuffer =
-                await sharp(
-                    thumbnailBuffer
-                )
-                    .png()
-                    .toBuffer();
-
-
-            return {
-                buffer: pngBuffer,
-                mimeType: 'image/png',
-                sourceType:
-                    sticker.is_animated
-                        ? 'animated-preview'
-                        : sticker.is_video
-                            ? 'video-preview'
-                            : 'static'
-            };
-
-        } catch (error) {
-
-            console.log(
-                "⚠️ Direct sticker thumbnail failed:",
-                error.message
-            );
-
-        }
-
-    }
-
-
-    // ========================================================
-    // 2. STICKER SET FALLBACK
-    // ========================================================
-
-    if (sticker.set_name) {
-
-        try {
-
-            console.log(
-                `🎭 Trying sticker set preview: ${sticker.set_name}`
-            );
-
-
-            const stickerSet =
-                await ctx.api.getStickerSet(
-                    sticker.set_name
-                );
-
-
-            // ------------------------------------------------
-            // Try to find the exact sticker again
-            // ------------------------------------------------
-
-            const matchingSticker =
-                stickerSet.stickers?.find(
-                    item =>
-                        item.file_unique_id ===
-                        sticker.file_unique_id
-                );
-
-
-            if (
-                matchingSticker?.thumbnail?.file_id
-            ) {
-
-                const thumbnailBuffer =
-                    await downloadTelegramFile(
-                        ctx,
-                        matchingSticker.thumbnail.file_id
-                    );
-
-
-                const pngBuffer =
-                    await sharp(
-                        thumbnailBuffer
-                    )
-                        .png()
-                        .toBuffer();
-
-
-                return {
-                    buffer: pngBuffer,
-                    mimeType: 'image/png',
-                    sourceType:
-                        sticker.is_animated
-                            ? 'animated-preview'
-                            : sticker.is_video
-                                ? 'video-preview'
-                                : 'static'
-                };
-
-            }
-
-
-            // ------------------------------------------------
-            // Try sticker-set thumbnail
-            // ------------------------------------------------
-
-            if (
-                stickerSet.thumbnail?.file_id
-            ) {
-
-                const thumbnailBuffer =
-                    await downloadTelegramFile(
-                        ctx,
-                        stickerSet.thumbnail.file_id
-                    );
-
-
-                const pngBuffer =
-                    await sharp(
-                        thumbnailBuffer
-                    )
-                        .png()
-                        .toBuffer();
-
-
-                return {
-                    buffer: pngBuffer,
-                    mimeType: 'image/png',
-                    sourceType:
-                        'sticker-set-preview'
-                };
-
-            }
-
-        } catch (error) {
-
-            console.log(
-                "⚠️ Sticker set preview unavailable:",
-                error.message
-            );
-
-        }
-
-    }
-
-
-    // ========================================================
-    // 3. STATIC STICKER DIRECT FILE
-    // ========================================================
-
-    if (
-        !sticker.is_animated &&
-        !sticker.is_video
-    ) {
-
-        try {
-
-            const stickerBuffer =
-                await downloadTelegramFile(
-                    ctx,
-                    sticker.file_id
-                );
-
-
-            const pngBuffer =
-                await sharp(
-                    stickerBuffer
-                )
-                    .png()
-                    .toBuffer();
-
-
-            return {
-                buffer: pngBuffer,
-                mimeType: 'image/png',
-                sourceType: 'static'
-            };
-
-        } catch (error) {
-
-            console.log(
-                "⚠️ Static sticker conversion failed:",
-                error.message
-            );
-
-        }
-
-    }
-
-
-    // ========================================================
-    // NO PREVIEW
-    // ========================================================
-
-    throw new Error(
-        "Telegram did not provide an accessible preview for this sticker."
-    );
-}
-
-
-// ============================================================
-// STICKER HANDLER
-// ============================================================
-
-bot.on(
-    'message:sticker',
-    async (ctx) => {
-
-        const sticker =
-            ctx.message.sticker;
-
-
-        const placeholder =
-            await ctx.reply(
-                sticker.is_animated
-                    ? "🎭 Studying your animated sticker..."
-                    : sticker.is_video
-                        ? "🎭 Studying your video sticker..."
-                        : "🎭 Studying your sticker..."
-            );
-
-
-        const stopTyping =
-            startTyping(ctx);
-
-
-        try {
-
-            const {
-                buffer,
-                mimeType,
-                sourceType
-            } =
-                await getStickerPreview(
-                    ctx,
-                    sticker
-                );
-
-
-            const stickerType =
-                sticker.is_animated
-                    ? "animated TGS sticker"
-                    : sticker.is_video
-                        ? "video WEBM sticker"
-                        : "static sticker";
-
-
-            const stickerPrompt = `
-You are ChatPro AI's sticker understanding system.
-
-Study this Telegram ${stickerType} carefully.
-
-IMPORTANT:
-You are looking at the visual preview available from Telegram.
-
-Do not invent animation or movement that is not visible in
-the provided image.
-
-Analyze the sticker like a human who understands internet
-and chat culture.
-
-Cover the useful details naturally:
-
-🎭 What is shown
-Explain the main character, person, animal, object or scene.
-
-🙂 Expression
-Explain the visible facial expression and emotion.
-
-💭 Meaning
-Explain what emotion, reaction or message the sticker
-appears to communicate.
-
-💬 Chat usage
-Explain when someone might naturally use this sticker.
-
-🎨 Visual details
-Mention interesting colors, pose, clothing, objects,
-style, text, symbols or other visible details.
-
-If the sticker contains visible text, read it when possible.
-
-If something is uncertain, say so instead of inventing it.
-
-Make the answer:
-• Natural
-• Interesting
-• Slightly entertaining
-• Professional
-• Concise but informative
-
-Do not produce a giant report.
-
-Use a short opening paragraph followed by useful sections
-only where they improve readability.
-
-Do not use Markdown headings.
-
-Do not use:
-
-#
-##
-###
-**bold**
-*italic*
----
-> blockquotes
-
-Use simple Telegram-friendly formatting.
-`;
-
-
-            const answer =
-                await analyzeImage(
-                    buffer,
-                    mimeType,
-                    stickerPrompt
-                );
-
-
-            const previewLabel =
-                sourceType === 'animated-preview'
-                    ? "🎞️ Animated sticker preview"
-                    : sourceType === 'video-preview'
-                        ? "🎬 Video sticker preview"
-                        : sourceType === 'sticker-set-preview'
-                            ? "🖼️ Sticker-set preview"
-                            : "🖼️ Sticker";
-
-
-            await ctx.api
-                .editMessageText(
-                    ctx.chat.id,
-                    placeholder.message_id,
-                    `🎭 Sticker Study\n${previewLabel}\n\n${answer}`
-                )
-                .catch(
-                    async () => {
-
-                        await ctx.reply(
-                            `🎭 Sticker Study\n${previewLabel}\n\n${answer}`
-                        );
-
-                    }
-                );
-
-
-        } catch (error) {
-
-            console.error(
-                "Sticker analysis error:",
-                error.message
-            );
-
-
-            const stickerType =
-                sticker.is_animated
-                    ? "animated"
-                    : sticker.is_video
-                        ? "video"
-                        : "static";
-
-
-            await ctx.api
-                .editMessageText(
-                    ctx.chat.id,
-                    placeholder.message_id,
-                    `🎭 I received your ${stickerType} sticker, but Telegram didn't provide an accessible preview for this particular sticker.\n\nTry sending another sticker from the same pack and I'll study it.`
-                )
-                .catch(() => {});
-
-
-        } finally {
-
-            stopTyping();
-
-        }
-
-    }
-);
-
-
-// ============================================================
-// IMAGE EDITOR COMMAND
+// IMAGE EDITOR
 // ============================================================
 
 bot.command(
@@ -1028,14 +676,12 @@ bot.command(
                     parse_mode: "Markdown"
                 }
             );
-
         }
 
         if (!textToOverlay) {
 
             textToOverlay =
                 "Utkarsh";
-
         }
 
         const placeholder =
@@ -1091,16 +737,14 @@ bot.command(
                 .editMessageText(
                     ctx.chat.id,
                     placeholder.message_id,
-                    "Sorry, I couldn't edit the image. Please try again!"
+                    "❌ Sorry, I couldn't edit the image."
                 )
                 .catch(() => {});
 
         } finally {
 
             stopTyping();
-
         }
-
     }
 );
 
@@ -1139,6 +783,9 @@ bot.on(
                 }
             );
 
+            // ------------------------------------------------
+            // NO CAPTION
+            // ------------------------------------------------
 
             if (!caption) {
 
@@ -1149,12 +796,14 @@ bot.on(
                 return;
             }
 
+            // ------------------------------------------------
+            // PHOTO + /TEXT
+            // ------------------------------------------------
 
             const editCommand =
                 caption.match(
                     /^\/(?:text|name|addtext|edit)(?:\s+(.*))?$/i
                 );
-
 
             if (editCommand) {
 
@@ -1162,16 +811,13 @@ bot.on(
                     editCommand[1]?.trim() ||
                     "Utkarsh";
 
-
                 const placeholder =
                     await ctx.reply(
                         `✍️ Adding "${textToOverlay}" to your image...`
                     );
 
-
                 const stopTyping =
                     startTyping(ctx);
-
 
                 try {
 
@@ -1180,7 +826,6 @@ bot.on(
                             buffer,
                             textToOverlay
                         );
-
 
                     await ctx.replyWithPhoto(
                         new InputFile(
@@ -1193,14 +838,12 @@ bot.on(
                         }
                     );
 
-
                     await ctx.api
                         .deleteMessage(
                             ctx.chat.id,
                             placeholder.message_id
                         )
                         .catch(() => {});
-
 
                 } catch (error) {
 
@@ -1209,35 +852,33 @@ bot.on(
                         error.message
                     );
 
-
                     await ctx.api
                         .editMessageText(
                             ctx.chat.id,
                             placeholder.message_id,
-                            "Sorry, couldn't edit the image. Please try again!"
+                            "❌ Couldn't edit the image."
                         )
                         .catch(() => {});
-
 
                 } finally {
 
                     stopTyping();
-
                 }
 
                 return;
             }
 
+            // ------------------------------------------------
+            // PHOTO + QUESTION
+            // ------------------------------------------------
 
             const placeholder =
                 await ctx.reply(
                     "🖼️ Analyzing your image..."
                 );
 
-
             const stopTyping =
                 startTyping(ctx);
-
 
             try {
 
@@ -1248,7 +889,6 @@ bot.on(
                         caption
                     );
 
-
                 await ctx.api
                     .editMessageText(
                         ctx.chat.id,
@@ -1257,14 +897,11 @@ bot.on(
                     )
                     .catch(
                         async () => {
-
                             await ctx.reply(
                                 answer
                             );
-
                         }
                     );
-
 
             } catch (error) {
 
@@ -1272,7 +909,6 @@ bot.on(
                     "Image analysis error:",
                     error.message
                 );
-
 
                 await ctx.api
                     .editMessageText(
@@ -1282,11 +918,9 @@ bot.on(
                     )
                     .catch(() => {});
 
-
             } finally {
 
                 stopTyping();
-
             }
 
         } catch (error) {
@@ -1296,13 +930,173 @@ bot.on(
                 error.message
             );
 
-
             await ctx.reply(
                 "❌ I couldn't process that image. Please try sending it again."
             );
-
         }
+    }
+);
 
+
+// ============================================================
+// STICKER HANDLER
+// ============================================================
+
+bot.on(
+    'message:sticker',
+    async (ctx) => {
+
+        const sticker =
+            ctx.message.sticker;
+
+        const placeholder =
+            await ctx.reply(
+                "🎭 Studying your sticker..."
+            );
+
+        const stopTyping =
+            startTyping(ctx);
+
+        try {
+
+            let buffer = null;
+
+            let mimeType =
+                'image/png';
+
+            // Try thumbnail first
+            if (
+                sticker.thumbnail?.file_id
+            ) {
+
+                try {
+
+                    const thumbnail =
+                        await downloadTelegramFile(
+                            ctx,
+                            sticker.thumbnail.file_id
+                        );
+
+                    buffer =
+                        await sharp(
+                            thumbnail
+                        )
+                            .png()
+                            .toBuffer();
+
+                } catch (error) {
+
+                    console.log(
+                        "Sticker thumbnail failed:",
+                        error.message
+                    );
+                }
+            }
+
+            // Static sticker fallback
+            if (
+                !buffer &&
+                !sticker.is_animated &&
+                !sticker.is_video
+            ) {
+
+                try {
+
+                    const stickerFile =
+                        await downloadTelegramFile(
+                            ctx,
+                            sticker.file_id
+                        );
+
+                    buffer =
+                        await sharp(
+                            stickerFile
+                        )
+                            .png()
+                            .toBuffer();
+
+                } catch (error) {
+
+                    console.log(
+                        "Sticker file failed:",
+                        error.message
+                    );
+                }
+            }
+
+            if (!buffer) {
+
+                throw new Error(
+                    "No accessible sticker preview."
+                );
+            }
+
+            const prompt = `
+Analyze this Telegram sticker.
+
+Explain:
+
+🎭 What is shown
+
+🙂 Facial expression and emotion
+
+💭 What the sticker communicates
+
+💬 When someone would naturally use it in chat
+
+🎨 Important visual details
+
+If there is visible text, read it.
+
+If something is uncertain, say so.
+
+Do not invent details.
+
+Keep the answer concise and natural.
+
+Use Telegram-friendly plain text.
+`;
+
+            const answer =
+                await analyzeImage(
+                    buffer,
+                    mimeType,
+                    prompt
+                );
+
+            await ctx.api
+                .editMessageText(
+                    ctx.chat.id,
+                    placeholder.message_id,
+                    answer
+                )
+                .catch(
+                    async () => {
+                        await ctx.reply(
+                            answer
+                        );
+                    }
+                );
+
+        } catch (error) {
+
+            console.error(
+                "Sticker analysis error:",
+                error.message
+            );
+
+            await ctx.api
+                .editMessageText(
+                    ctx.chat.id,
+                    placeholder.message_id,
+                    "❌ I couldn't access the sticker preview. Try sending it as a photo."
+                )
+                .catch(() => {});
+
+        } finally {
+
+            stopTyping();
+        }
     }
 );
 
@@ -1324,7 +1118,6 @@ bot.callbackQuery(
                     buildStartKeyboard()
             }
         );
-
     }
 );
 
@@ -1353,9 +1146,8 @@ bot.callbackQuery(
         );
 
         await ctx.reply(
-            "🧹 Fresh start! Your conversation history has been cleared. Say something to begin!"
+            "🧹 Fresh start! Your conversation history has been cleared."
         );
-
     }
 );
 
@@ -1380,7 +1172,6 @@ bot.callbackQuery(
                     chatId
                 );
 
-
             if (
                 !chatDoc.messages ||
                 chatDoc.messages.length === 0
@@ -1389,13 +1180,10 @@ bot.callbackQuery(
                 return ctx.reply(
                     "📜 No conversation history yet. Start chatting to build your history!"
                 );
-
             }
-
 
             const recent =
                 chatDoc.messages.slice(-10);
-
 
             const summary =
                 recent
@@ -1405,7 +1193,6 @@ bot.callbackQuery(
                     )
                     .join('\n');
 
-
             await ctx.reply(
                 `📜 Recent Conversation History\n\n${summary}`,
                 {
@@ -1414,7 +1201,6 @@ bot.callbackQuery(
                 }
             );
 
-
         } catch (error) {
 
             console.error(
@@ -1422,13 +1208,10 @@ bot.callbackQuery(
                 error.message
             );
 
-
             await ctx.reply(
                 "❌ Couldn't load your conversation history right now."
             );
-
         }
-
     }
 );
 
@@ -1446,7 +1229,6 @@ bot.callbackQuery(
         await ctx.reply(
             aboutMessage
         );
-
     }
 );
 
@@ -1467,7 +1249,6 @@ bot.callbackQuery(
         const chatId =
             ctx.chat.id.toString();
 
-
         try {
 
             const {
@@ -1480,7 +1261,6 @@ bot.callbackQuery(
                     5
                 );
 
-
             if (
                 !images ||
                 images.length === 0
@@ -1489,9 +1269,7 @@ bot.callbackQuery(
                 return ctx.reply(
                     "🎨 Your image library is empty.\n\nUse /imagine to create your first AI image!"
                 );
-
             }
-
 
             for (
                 const image
@@ -1505,38 +1283,18 @@ bot.callbackQuery(
                             `🎨 ${image.prompt}`
                     }
                 );
-
             }
 
-
-            if (pages > 1) {
-
-                await ctx.reply(
-                    `📚 Image Library — Page ${page + 1}/${pages}`,
-                    {
-                        reply_markup:
-                            buildLibraryKeyboard(
-                                page,
-                                pages
-                            )
-                    }
-                );
-
-            } else {
-
-                await ctx.reply(
-                    "📚 Image Library",
-                    {
-                        reply_markup:
-                            buildLibraryKeyboard(
-                                page,
-                                pages || 1
-                            )
-                    }
-                );
-
-            }
-
+            await ctx.reply(
+                `📚 Image Library — Page ${page + 1}/${pages || 1}`,
+                {
+                    reply_markup:
+                        buildLibraryKeyboard(
+                            page,
+                            pages || 1
+                        )
+                }
+            );
 
         } catch (error) {
 
@@ -1545,13 +1303,10 @@ bot.callbackQuery(
                 error.message
             );
 
-
             await ctx.reply(
                 "❌ Couldn't load your image library."
             );
-
         }
-
     }
 );
 
@@ -1565,7 +1320,6 @@ bot.callbackQuery(
     async (ctx) => {
 
         await ctx.answerCallbackQuery();
-
     }
 );
 
@@ -1587,13 +1341,12 @@ bot.callbackQuery(
                     buildStartKeyboard()
             }
         );
-
     }
 );
 
 
 // ============================================================
-// FONT INFO BUTTON
+// FONT INFO
 // ============================================================
 
 bot.callbackQuery(
@@ -1603,15 +1356,14 @@ bot.callbackQuery(
         await ctx.answerCallbackQuery();
 
         await ctx.reply(
-            "🔤 Font Generator\n\nUse:\n/font Your Text\n\nExample:\n/font Utkarsh\n\nI'll generate multiple Unicode font styles for you."
+            "🔤 Font Generator\n\nUse:\n/font Your Text\n\nExample:\n/font Utkarsh"
         );
-
     }
 );
 
 
 // ============================================================
-// IMAGE EDITOR INFO BUTTON
+// EDITOR INFO
 // ============================================================
 
 bot.callbackQuery(
@@ -1621,15 +1373,14 @@ bot.callbackQuery(
         await ctx.answerCallbackQuery();
 
         await ctx.reply(
-            "🖼️ Image Editor\n\nSend a photo with:\n/text Your Name\n\nOr reply to an existing photo with:\n/text Your Name"
+            "🖼️ Image Editor\n\nSend a photo with:\n/text Your Name\n\nOr reply to a photo with:\n/text Your Name"
         );
-
     }
 );
 
 
 // ============================================================
-// TIPS BUTTON
+// TIPS
 // ============================================================
 
 bot.callbackQuery(
@@ -1639,15 +1390,14 @@ bot.callbackQuery(
         await ctx.answerCallbackQuery();
 
         await ctx.reply(
-            "⚡ ChatPro Tips\n\n• Ask follow-up questions naturally\n• Send a photo and ask what is in it\n• Send a static, animated or video sticker and I'll study its available preview\n• Use /imagine for AI images\n• Use /font for stylish text\n• Use /text to edit photos\n• Use /newchat for a fresh conversation"
+            "⚡ ChatPro Tips\n\n• Ask follow-up questions naturally\n• Send a photo and ask what is in it\n• Reply to a photo with a question\n• Send a sticker to analyze it\n• Ask naturally to create an image\n• Use /imagine for direct image generation\n• Use /font for stylish text\n• Use /text to edit photos"
         );
-
     }
 );
 
 
 // ============================================================
-// CREATOR BUTTON
+// CREATOR
 // ============================================================
 
 bot.callbackQuery(
@@ -1659,13 +1409,12 @@ bot.callbackQuery(
         await ctx.reply(
             "👨‍💻 Created by @Utkarsh12011\n\n🤖 ChatPro AI\n⚡ Think. Create. Explore."
         );
-
     }
 );
 
 
 // ============================================================
-// NORMAL TEXT MESSAGE HANDLER
+// TEXT MESSAGE HANDLER
 // ============================================================
 
 bot.on(
@@ -1675,36 +1424,132 @@ bot.on(
         const userMessage =
             ctx.message.text.trim();
 
-
+        // Ignore commands
         if (
             userMessage.startsWith('/')
         ) {
 
             return;
-
         }
-
 
         const chatId =
             ctx.chat.id.toString();
 
 
-        // ----------------------------------------------------
+        // ====================================================
+        // REPLY TO A PHOTO
+        // ====================================================
+
+        const repliedMessage =
+            ctx.message.reply_to_message;
+
+        if (
+            repliedMessage?.photo
+        ) {
+
+            const placeholder =
+                await ctx.reply(
+                    "🖼️ Analyzing the image you replied to..."
+                );
+
+            const stopTyping =
+                startTyping(ctx);
+
+            try {
+
+                const {
+                    buffer,
+                    mimeType
+                } =
+                    await downloadTelegramPhoto(
+                        ctx,
+                        repliedMessage.photo
+                    );
+
+                const answer =
+                    await analyzeImage(
+                        buffer,
+                        mimeType,
+                        userMessage
+                    );
+
+                await ctx.api
+                    .editMessageText(
+                        ctx.chat.id,
+                        placeholder.message_id,
+                        answer
+                    )
+                    .catch(
+                        async () => {
+
+                            await ctx.reply(
+                                answer
+                            );
+                        }
+                    );
+
+            } catch (error) {
+
+                console.error(
+                    "Reply image analysis error:",
+                    error.message
+                );
+
+                await ctx.api
+                    .editMessageText(
+                        ctx.chat.id,
+                        placeholder.message_id,
+                        "❌ I couldn't analyze the image you replied to."
+                    )
+                    .catch(() => {});
+
+            } finally {
+
+                stopTyping();
+            }
+
+            return;
+        }
+
+
+        // ====================================================
+        // AUTOMATIC IMAGE GENERATION
+        // ====================================================
+
+        if (
+            isImageGenerationRequest(
+                userMessage
+            )
+        ) {
+
+            const prompt =
+                extractImagePrompt(
+                    userMessage
+                );
+
+            await generateAndSendImage(
+                ctx,
+                prompt
+            );
+
+            return;
+        }
+
+
+        // ====================================================
         // PENDING IMAGE
-        // ----------------------------------------------------
+        // ====================================================
 
         const pending =
             pendingImages.get(
                 chatId
             );
 
-
         if (pending) {
 
             const age =
                 Date.now() -
                 pending.timestamp;
-
 
             if (
                 age <= IMAGE_EXPIRY
@@ -1714,16 +1559,13 @@ bot.on(
                     chatId
                 );
 
-
                 const placeholder =
                     await ctx.reply(
                         "🖼️ Analyzing your image..."
                     );
 
-
                 const stopTyping =
                     startTyping(ctx);
-
 
                 try {
 
@@ -1733,7 +1575,6 @@ bot.on(
                             pending.mimeType,
                             userMessage
                         );
-
 
                     await ctx.api
                         .editMessageText(
@@ -1747,10 +1588,8 @@ bot.on(
                                 await ctx.reply(
                                     answer
                                 );
-
                             }
                         );
-
 
                 } catch (error) {
 
@@ -1759,42 +1598,34 @@ bot.on(
                         error.message
                     );
 
-
                     await ctx.api
                         .editMessageText(
                             ctx.chat.id,
                             placeholder.message_id,
-                            "❌ I couldn't analyze that image right now. Please try again."
+                            "❌ I couldn't analyze that image right now."
                         )
                         .catch(() => {});
-
 
                 } finally {
 
                     stopTyping();
-
                 }
 
-
                 return;
-
             }
-
 
             pendingImages.delete(
                 chatId
             );
-
         }
 
 
-        // ----------------------------------------------------
+        // ====================================================
         // NORMAL AI CHAT
-        // ----------------------------------------------------
+        // ====================================================
 
         const stopTyping =
             startTyping(ctx);
-
 
         try {
 
@@ -1804,12 +1635,10 @@ bot.on(
                     ctx.from || {}
                 );
 
-
             const chatDoc =
                 await db.getChatHistory(
                     chatId
                 );
-
 
             const history =
                 chatDoc.messages
@@ -1824,10 +1653,32 @@ bot.on(
                     );
 
 
+            // ------------------------------------------------
+            // REPLY CONTEXT
+            // ------------------------------------------------
+
+            let messageForAI =
+                userMessage;
+
+            if (
+                repliedMessage?.text
+            ) {
+
+                messageForAI =
+                    `The user is replying to this previous message:
+
+"${repliedMessage.text.slice(0, 4000)}"
+
+Now answer the user's new message:
+
+${userMessage}`;
+            }
+
+
             const answer =
                 await generateAIResponse(
                     history,
-                    userMessage,
+                    messageForAI,
                     profile
                 );
 
@@ -1851,7 +1702,6 @@ bot.on(
                 answer
             );
 
-
         } catch (error) {
 
             console.error(
@@ -1859,18 +1709,14 @@ bot.on(
                 error.message
             );
 
-
             await ctx.reply(
                 "❌ Something went wrong while processing your message. Please try again."
             );
 
-
         } finally {
 
             stopTyping();
-
         }
-
     }
 );
 
@@ -1886,18 +1732,16 @@ bot.catch(
             "❌ Bot error:",
             error.error
         );
-
     }
 );
 
 
 // ============================================================
-// HEALTH SERVER FOR RENDER
+// RENDER HEALTH SERVER
 // ============================================================
 
 const PORT =
     Number(process.env.PORT) || 3000;
-
 
 const server =
     http.createServer(
@@ -1923,7 +1767,6 @@ const server =
                 return;
             }
 
-
             res.writeHead(
                 404,
                 {
@@ -1935,13 +1778,12 @@ const server =
             res.end(
                 'Not Found'
             );
-
         }
     );
 
 
 // ============================================================
-// START HTTP SERVER
+// START SERVER
 // ============================================================
 
 server.listen(
@@ -1952,13 +1794,12 @@ server.listen(
         console.log(
             `🌐 Health server running on port ${PORT}`
         );
-
     }
 );
 
 
 // ============================================================
-// START TELEGRAM BOT
+// START BOT
 // ============================================================
 
 bot.start({
@@ -1970,7 +1811,6 @@ bot.start({
             console.log(
                 "🤖 ChatPro AI bot started successfully!"
             );
-
         }
     )
     .catch(
@@ -1982,7 +1822,6 @@ bot.start({
             );
 
             process.exit(1);
-
         }
     );
 
