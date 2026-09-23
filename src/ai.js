@@ -1,18 +1,40 @@
 const { GoogleGenAI } = require('@google/genai');
-const { callOpenRouter } = require('./openrouter');
+
+const {
+    callOpenRouter,
+    analyzeImageWithOpenRouter
+} = require('./openrouter');
+
 
 // ─────────────────────────────────────────────────────────────
-// Gemini
+// GEMINI - PRIMARY PROVIDER
 // ─────────────────────────────────────────────────────────────
 
 const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY
 });
 
+
 // Google Search grounding
 const groundingTool = {
     googleSearch: {}
 };
+
+
+// Gemini models
+const MODELS = [
+    'gemini-3.8-flash',
+    'gemini-2.5-flash-lite'
+];
+
+
+// When Gemini quota/rate limit happens,
+// don't repeatedly hit Gemini.
+// After this time Gemini will automatically be tried again.
+let geminiCooldownUntil = 0;
+
+const GEMINI_COOLDOWN =
+    60 * 1000;
 
 
 // ─────────────────────────────────────────────────────────────
@@ -26,38 +48,36 @@ function buildSystemPrompt(userProfile) {
         userProfile?.firstName ||
         'Utkarsh';
 
-    const username = userProfile?.username
-        ? `@${userProfile.username}`
-        : '';
+    const username =
+        userProfile?.username
+            ? `@${userProfile.username}`
+            : '';
 
-    const factsList = userProfile?.facts?.length
-        ? userProfile.facts.join('; ')
-        : '';
+    const factsList =
+        userProfile?.facts?.length
+            ? userProfile.facts.join('; ')
+            : '';
 
-    const currentDateTime = new Date().toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        dateStyle: 'full',
-        timeStyle: 'short'
-    });
+    const currentDateTime =
+        new Date().toLocaleString(
+            'en-IN',
+            {
+                timeZone: 'Asia/Kolkata',
+                dateStyle: 'full',
+                timeStyle: 'short'
+            }
+        );
 
-    return `You are ChatPro AI, a highly intelligent, helpful and natural AI assistant on Telegram.
+    return `
+You are ChatPro AI, a highly intelligent, helpful and natural AI assistant on Telegram.
 
 CURRENT DATE AND TIME:
 - The current date and time in India is ${currentDateTime}.
-- Use this date and time when answering questions about today, tomorrow, yesterday, this week, this month, or the current time.
+- Use this date and time when answering questions about today, tomorrow, yesterday, this week or this month.
 - Never invent or guess the current date.
 
 REAL-TIME KNOWLEDGE:
-- When a question requires current, recent, changing, or time-sensitive information, use the available web search tool.
-- Examples:
-  • today's news
-  • latest news
-  • current prices
-  • current technology
-  • recent announcements
-  • sports results
-  • current company information
-  • recent government information
+- When a question requires current, recent, changing or time-sensitive information, use the available web search tool.
 - Never claim something is real-time unless it was actually obtained through available search.
 - If current information cannot be verified, say so instead of inventing an answer.
 
@@ -71,12 +91,10 @@ CONVERSATION STYLE:
 USER MEMORY:
 - You are chatting with ${name} ${username ? `(${username})` : ''}.
 - Their name is ${name}.
-- Remember their name and relevant stored facts.
-- If the user asks "what is my name?", answer that their name is ${name}.
 ${factsList ? `- Known facts about ${name}: ${factsList}` : ''}
 
 FONT STYLING:
-- If the user asks for a specific font style such as Times New Roman, serif, cursive, script, gothic, monospace, bold, bubble, or small caps, use appropriate Unicode characters.
+- If the user asks for a specific font style such as Times New Roman, serif, cursive, script, gothic, monospace, bold, bubble or small caps, use appropriate Unicode characters.
 
 FORMATTING:
 - Do NOT use markdown symbols like **, ###, or __ unless formatting code.
@@ -87,110 +105,172 @@ FORMATTING:
 IMPORTANT:
 - Answer the user's actual question directly.
 - Do not unnecessarily repeat the question.
-- Do not mention internal AI providers, models, APIs, fallback systems, or infrastructure.
+- Do not mention internal AI providers, models, APIs, fallback systems or infrastructure.
 - Present yourself simply as ChatPro AI.
 `;
 }
 
 
 // ─────────────────────────────────────────────────────────────
-// NORMAL GEMINI CHAT
+// CHECK WHETHER GEMINI SHOULD BE TRIED
 // ─────────────────────────────────────────────────────────────
 
-const MODELS = [
-    'gemini-3.8-flash',
-    'gemini-2.5-flash-lite'
-];
+function shouldTryGemini() {
 
-let geminiCooldownUntil = 0;
+    if (!process.env.GEMINI_API_KEY) {
+        console.log(
+            '⚠️ GEMINI_API_KEY is missing.'
+        );
 
-
-async function tryGemini(contents, systemPrompt) {
+        return false;
+    }
 
     if (Date.now() < geminiCooldownUntil) {
+
+        console.log(
+            '⏳ Gemini is temporarily on cooldown. Using OpenRouter backup.'
+        );
+
+        return false;
+    }
+
+    return true;
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// GEMINI PRIMARY
+// ─────────────────────────────────────────────────────────────
+
+async function tryGemini(
+    contents,
+    systemPrompt
+) {
+
+    if (!shouldTryGemini()) {
         return null;
     }
+
 
     for (const model of MODELS) {
 
         try {
 
-            console.log(`⚡ Trying Gemini model: ${model}`);
+            console.log(
+                `⚡ PRIMARY: Trying Gemini ${model}`
+            );
 
-            const generatePromise = ai.models.generateContent({
 
-                model,
+            const generatePromise =
+                ai.models.generateContent({
 
-                contents,
+                    model,
 
-                config: {
-                    systemInstruction: systemPrompt,
+                    contents,
 
-                    tools: [
-                        groundingTool
-                    ]
-                }
+                    config: {
 
-            });
+                        systemInstruction:
+                            systemPrompt,
 
-            const timeoutPromise = new Promise((_, reject) => {
+                        tools: [
+                            groundingTool
+                        ]
 
-                setTimeout(
-                    () => reject(new Error('Gemini request timeout')),
-                    20000
+                    }
+
+                });
+
+
+            const timeoutPromise =
+                new Promise(
+                    (_, reject) => {
+
+                        setTimeout(
+                            () =>
+                                reject(
+                                    new Error(
+                                        'Gemini request timeout'
+                                    )
+                                ),
+                            20000
+                        );
+
+                    }
                 );
 
-            });
 
-            const response = await Promise.race([
-                generatePromise,
-                timeoutPromise
-            ]);
+            const response =
+                await Promise.race([
+                    generatePromise,
+                    timeoutPromise
+                ]);
 
-            if (response && response.text) {
+
+            if (
+                response &&
+                response.text
+            ) {
 
                 console.log(
-                    `✅ Gemini responded using ${model}`
+                    `✅ PRIMARY Gemini response received using ${model}`
                 );
 
-                let answer = response.text;
 
-                // Extract Google Search sources
+                let answer =
+                    response.text;
+
+
+                // Search source extraction
                 try {
 
                     const chunks =
-                        response.candidates?.[0]
+                        response
+                            .candidates?.[0]
                             ?.groundingMetadata
                             ?.groundingChunks || [];
 
+
                     const sources = [];
 
-                    for (const chunk of chunks) {
 
-                        const web = chunk?.web;
+                    for (
+                        const chunk
+                        of chunks
+                    ) {
+
+                        const web =
+                            chunk?.web;
+
 
                         if (
                             web?.uri &&
                             !sources.some(
                                 source =>
-                                    source.uri === web.uri
+                                    source.uri ===
+                                    web.uri
                             )
                         ) {
 
                             sources.push({
+
                                 title:
                                     web.title ||
                                     'Source',
 
                                 uri:
                                     web.uri
+
                             });
 
                         }
 
                     }
 
-                    if (sources.length > 0) {
+
+                    if (
+                        sources.length > 0
+                    ) {
 
                         const sourceLines =
                             sources
@@ -201,12 +281,15 @@ async function tryGemini(contents, systemPrompt) {
                                 )
                                 .join('\n');
 
+
                         answer +=
                             `\n\n🌐 Sources:\n${sourceLines}`;
 
                     }
 
-                } catch (sourceError) {
+                } catch (
+                    sourceError
+                ) {
 
                     console.log(
                         'Source extraction skipped:',
@@ -215,28 +298,65 @@ async function tryGemini(contents, systemPrompt) {
 
                 }
 
+
                 return answer;
             }
 
         } catch (error) {
 
-            console.log(
-                `Gemini ${model} error:`,
-                error.message ||
-                error.status ||
-                'unknown error'
+            const errorMessage =
+                error?.message ||
+                error?.status ||
+                'unknown error';
+
+
+            console.error(
+                `❌ Gemini ${model} failed:`,
+                errorMessage
             );
 
+
+            // Quota / rate limit / resource exhaustion
+            const lowerError =
+                String(
+                    errorMessage
+                ).toLowerCase();
+
+
+            const quotaError =
+                lowerError.includes('429') ||
+                lowerError.includes('quota') ||
+                lowerError.includes('resource exhausted') ||
+                lowerError.includes('rate limit') ||
+                lowerError.includes('too many requests');
+
+
+            if (quotaError) {
+
+                console.log(
+                    '🚨 Gemini quota/rate limit detected.'
+                );
+
+
+                geminiCooldownUntil =
+                    Date.now() +
+                    GEMINI_COOLDOWN;
+
+
+                break;
+            }
+
+
+            // Try the next Gemini model
             continue;
         }
     }
 
+
     console.log(
-        '⚠️ All Gemini models failed. Using OpenRouter fallback.'
+        '⚠️ Gemini unavailable. Switching to OpenRouter backup.'
     );
 
-    geminiCooldownUntil =
-        Date.now() + (30 * 1000);
 
     return null;
 }
@@ -253,22 +373,30 @@ async function generateAIResponse(
 ) {
 
     const systemPrompt =
-        buildSystemPrompt(userProfile);
+        buildSystemPrompt(
+            userProfile
+        );
 
-    const contents = history.map(msg => ({
 
-        role:
-            msg.role === 'model'
-                ? 'model'
-                : 'user',
+    const contents =
+        history.map(
+            message => ({
 
-        parts: [
-            {
-                text: msg.text
-            }
-        ]
+                role:
+                    message.role === 'model'
+                        ? 'model'
+                        : 'user',
 
-    }));
+                parts: [
+                    {
+                        text:
+                            message.text
+                    }
+                ]
+
+            })
+        );
+
 
     contents.push({
 
@@ -276,11 +404,17 @@ async function generateAIResponse(
 
         parts: [
             {
-                text: newMessage
+                text:
+                    newMessage
             }
         ]
 
     });
+
+
+    // ─────────────────────────────
+    // FIRST: GEMINI
+    // ─────────────────────────────
 
     try {
 
@@ -290,25 +424,33 @@ async function generateAIResponse(
                 systemPrompt
             );
 
+
         if (geminiResult) {
+
             return geminiResult;
+
         }
 
     } catch (error) {
 
-        console.log(
-            'Gemini attempt error:',
-            error.message
+        console.error(
+            'Gemini primary error:',
+            error.message || error
         );
 
     }
 
-    // Fallback
+
+    // ─────────────────────────────
+    // SECOND: OPENROUTER
+    // ─────────────────────────────
+
     try {
 
         console.log(
-            '⚡ Routing to fallback AI...'
+            '🔄 BACKUP: Routing request to OpenRouter...'
         );
+
 
         return await callOpenRouter(
             history,
@@ -319,63 +461,76 @@ async function generateAIResponse(
     } catch (error) {
 
         console.error(
-            'Fallback AI error:',
+            '❌ OpenRouter backup error:',
             error.message || error
         );
 
-        return "I'm having a brief moment! Please try sending your message again in a few seconds.";
 
+        return "I'm having a brief moment! Please try sending your message again in a few seconds.";
     }
 }
 
 
 // ─────────────────────────────────────────────────────────────
-// 🖼️ IMAGE UNDERSTANDING
+// IMAGE UNDERSTANDING
 // ─────────────────────────────────────────────────────────────
 
 async function analyzeImage(
     imageBuffer,
     mimeType = 'image/jpeg',
-    userQuestion = 'Describe this image in detail.'
+    userQuestion =
+        'Describe this image in detail.'
 ) {
 
     if (!imageBuffer) {
-        throw new Error('No image data received.');
+
+        throw new Error(
+            'No image data received.'
+        );
+
     }
 
-    // Convert Telegram image bytes → Base64
+
     const base64Image =
-        imageBuffer.toString('base64');
+        imageBuffer.toString(
+            'base64'
+        );
 
-    const imageModels = [
-        'gemini-3.8-flash',
-        'gemini-2.5-flash-lite'
-    ];
 
-    for (const model of imageModels) {
+    // Try Gemini first
+    if (
+        shouldTryGemini()
+    ) {
 
-        try {
+        for (
+            const model
+            of MODELS
+        ) {
 
-            console.log(
-                `🖼️ Sending image to Gemini: ${model}`
-            );
+            try {
 
-            const response =
-                await ai.models.generateContent({
+                console.log(
+                    `🖼️ PRIMARY: Sending image to Gemini ${model}`
+                );
 
-                    model,
 
-                    contents: [
+                const response =
+                    await ai.models.generateContent({
 
-                        {
-                            inlineData: {
-                                mimeType,
-                                data: base64Image
-                            }
-                        },
+                        model,
 
-                        {
-                            text: `You are ChatPro AI's image understanding system.
+                        contents: [
+
+                            {
+                                inlineData: {
+                                    mimeType,
+                                    data: base64Image
+                                }
+                            },
+
+                            {
+                                text: `
+You are ChatPro AI's image understanding system.
 
 Analyze the image carefully and answer the user's question.
 
@@ -384,48 +539,91 @@ ${userQuestion}
 
 Instructions:
 - Describe only what is actually visible.
-- Do not invent objects, people, text, locations, or events.
+- Do not invent objects, people, text, locations or events.
 - If something is uncertain, clearly say that it is uncertain.
-- If the user asks "what is this?", identify the main subject of the image.
+- If the user asks "what is this?", identify the main subject.
 - If there is readable text, mention it.
 - If the image contains a screenshot, explain what is shown.
 - If the image contains an object, explain what the object appears to be.
-- If the user asks a specific question, answer that question directly.
+- Answer the user's specific question directly.
 - Keep the response natural and useful.
 `
-                        }
+                            }
 
-                    ]
+                        ]
 
-                });
+                    });
 
-            if (
-                response &&
-                response.text
-            ) {
 
-                console.log(
-                    `✅ Image analyzed successfully using ${model}`
+                if (
+                    response &&
+                    response.text
+                ) {
+
+                    console.log(
+                        `✅ PRIMARY Gemini image analysis successful using ${model}`
+                    );
+
+
+                    return response.text;
+
+                }
+
+            } catch (error) {
+
+                const errorMessage =
+                    error?.message ||
+                    'unknown error';
+
+
+                console.error(
+                    `❌ Gemini image ${model} failed:`,
+                    errorMessage
                 );
 
-                return response.text;
+
+                const lowerError =
+                    String(
+                        errorMessage
+                    ).toLowerCase();
+
+
+                const quotaError =
+                    lowerError.includes('429') ||
+                    lowerError.includes('quota') ||
+                    lowerError.includes('resource exhausted') ||
+                    lowerError.includes('rate limit');
+
+
+                if (quotaError) {
+
+                    geminiCooldownUntil =
+                        Date.now() +
+                        GEMINI_COOLDOWN;
+
+                    break;
+                }
 
             }
-
-        } catch (error) {
-
-            console.error(
-                `❌ Image analysis failed with ${model}:`,
-                error.message ||
-                error
-            );
 
         }
 
     }
 
-    throw new Error(
-        'All Gemini image analysis models failed.'
+
+    // ─────────────────────────────
+    // OPENROUTER IMAGE BACKUP
+    // ─────────────────────────────
+
+    console.log(
+        '🔄 BACKUP: Using OpenRouter for image analysis...'
+    );
+
+
+    return await analyzeImageWithOpenRouter(
+        imageBuffer,
+        mimeType,
+        userQuestion
     );
 }
 
