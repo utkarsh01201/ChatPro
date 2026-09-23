@@ -55,7 +55,7 @@ const GROQ_COOLDOWN =
 
 
 // ============================================================
-// ADAPTIVE WEB SEARCH DETECTION
+// WEB SEARCH DETECTION
 // ============================================================
 
 function needsWebSearch(message) {
@@ -69,12 +69,7 @@ function needsWebSearch(message) {
             .toLowerCase()
             .trim();
 
-
-    // ========================================================
-    // EXPLICIT SEARCH REQUESTS
-    // ========================================================
-
-    const explicitSearchPatterns = [
+    const patterns = [
 
         'search web',
         'search the web',
@@ -85,43 +80,16 @@ function needsWebSearch(message) {
         'web search',
         'search online',
         'find online',
-        'find it online',
         'look it up',
         'look this up',
         'google it',
         'search for it',
         'search this',
-        'search this online',
         'verify online',
         'verify this',
         'check online',
         'check internet',
         'search internet',
-        'check latest online',
-        'check current information',
-        'look online',
-        'look on the internet'
-
-    ];
-
-
-    if (
-        explicitSearchPatterns.some(
-            pattern =>
-                text.includes(pattern)
-        )
-    ) {
-
-        return true;
-
-    }
-
-
-    // ========================================================
-    // CURRENT / RECENT INFORMATION
-    // ========================================================
-
-    const currentPatterns = [
 
         'latest',
         'recent',
@@ -137,48 +105,17 @@ function needsWebSearch(message) {
         'this month',
         'this year',
         'breaking news',
-        'recent news',
         'latest news',
+        'recent news',
         'live update',
         'live updates',
         'real time',
         'realtime',
-        'as of now',
-        'as of today',
-        'as of this week',
-        'updated information',
-        'updated knowledge',
-        'what is happening',
-        'what happened today',
-        'what happened recently',
-        '2026'
-
-    ];
-
-
-    if (
-        currentPatterns.some(
-            pattern =>
-                text.includes(pattern)
-        )
-    ) {
-
-        return true;
-
-    }
-
-
-    // ========================================================
-    // FAST-CHANGING INFORMATION
-    // ========================================================
-
-    const changingPatterns = [
+        '2026',
 
         'weather',
         'temperature',
         'forecast',
-        'rain today',
-        'rain tomorrow',
         'stock price',
         'share price',
         'crypto price',
@@ -204,34 +141,10 @@ function needsWebSearch(message) {
         'outage',
         'server status',
         'availability',
-        'available now'
-
-    ];
-
-
-    if (
-        changingPatterns.some(
-            pattern =>
-                text.includes(pattern)
-        )
-    ) {
-
-        return true;
-
-    }
-
-
-    // ========================================================
-    // NEWS / EVENTS / SPORTS
-    // ========================================================
-
-    const eventPatterns = [
 
         'news about',
         'news on',
         'news regarding',
-        'news today',
-        'news right now',
         'what happened',
         'happening now',
         'happening today',
@@ -243,36 +156,11 @@ function needsWebSearch(message) {
         'match tomorrow',
         'live score',
         'live scores',
-        'score today',
-        'scores today',
         'standings',
         'election result',
         'election results',
-        'results today',
-        'result today',
         'match result',
-        'match results'
-
-    ];
-
-
-    if (
-        eventPatterns.some(
-            pattern =>
-                text.includes(pattern)
-        )
-    ) {
-
-        return true;
-
-    }
-
-
-    // ========================================================
-    // CURRENT SOFTWARE / TECHNOLOGY
-    // ========================================================
-
-    const versionPatterns = [
+        'match results',
 
         'latest version',
         'current version',
@@ -285,30 +173,18 @@ function needsWebSearch(message) {
         'latest model',
         'current model',
         'supported model',
-        'available now',
         'released today',
         'released recently',
         'new release',
         'latest release',
         'current documentation',
         'latest documentation'
-
     ];
 
-
-    if (
-        versionPatterns.some(
-            pattern =>
-                text.includes(pattern)
-        )
-    ) {
-
-        return true;
-
-    }
-
-
-    return false;
+    return patterns.some(
+        pattern =>
+            text.includes(pattern)
+    );
 }
 
 
@@ -322,14 +198,8 @@ function formatForTelegram(text) {
         return '';
     }
 
-
     let answer =
         String(text);
-
-
-    // ========================================================
-    // REMOVE INTERNAL TAGS
-    // ========================================================
 
     answer =
         answer.replace(
@@ -337,13 +207,11 @@ function formatForTelegram(text) {
             ''
         );
 
-
     answer =
         answer.replace(
             /<\/?websearch>/gi,
             ''
         );
-
 
     answer =
         answer.replace(
@@ -351,13 +219,11 @@ function formatForTelegram(text) {
             ''
         );
 
-
     answer =
         answer.replace(
             /<thinking>[\s\S]*?<\/thinking>/gi,
             ''
         );
-
 
     answer =
         answer.replace(
@@ -365,17 +231,11 @@ function formatForTelegram(text) {
             ''
         );
 
-
-    // ========================================================
-    // REMOVE SEARCH-WAITING GARBAGE
-    // ========================================================
-
     answer =
         answer.replace(
             /I don't have the search results yet\.[\s\S]*$/gi,
             ''
         );
-
 
     answer =
         answer.replace(
@@ -383,13 +243,11 @@ function formatForTelegram(text) {
             ''
         );
 
-
     answer =
         answer.replace(
             /I'm still waiting for the search results\.[\s\S]*$/gi,
             ''
         );
-
 
     answer =
         answer.replace(
@@ -397,13 +255,7 @@ function formatForTelegram(text) {
             ''
         );
 
-
-    // ========================================================
-    // PROTECT CODE BLOCKS
-    // ========================================================
-
     const codeBlocks = [];
-
 
     answer =
         answer.replace(
@@ -419,17 +271,11 @@ function formatForTelegram(text) {
             }
         );
 
-
-    // ========================================================
-    // MARKDOWN HEADINGS → TELEGRAM HEADINGS
-    // ========================================================
-
     answer =
         answer.replace(
             /^\s*#{4,}\s*/gm,
             ''
         );
-
 
     answer =
         answer.replace(
@@ -437,13 +283,11 @@ function formatForTelegram(text) {
             '🔹 $1'
         );
 
-
     answer =
         answer.replace(
             /^\s*##\s*(.+)$/gm,
             '🔹 $1'
         );
-
 
     answer =
         answer.replace(
@@ -451,17 +295,11 @@ function formatForTelegram(text) {
             '🎯 $1'
         );
 
-
-    // ========================================================
-    // BOLD / ITALIC MARKDOWN
-    // ========================================================
-
     answer =
         answer.replace(
             /\*\*(.*?)\*\*/gs,
             '$1'
         );
-
 
     answer =
         answer.replace(
@@ -469,13 +307,11 @@ function formatForTelegram(text) {
             '$1'
         );
 
-
     answer =
         answer.replace(
             /(?<!\*)\*([^*\n]+)\*(?!\*)/g,
             '$1'
         );
-
 
     answer =
         answer.replace(
@@ -483,21 +319,11 @@ function formatForTelegram(text) {
             '$1'
         );
 
-
-    // ========================================================
-    // BLOCKQUOTES
-    // ========================================================
-
     answer =
         answer.replace(
             /^\s*>\s?/gm,
             '💬 '
         );
-
-
-    // ========================================================
-    // HORIZONTAL LINES
-    // ========================================================
 
     answer =
         answer.replace(
@@ -505,21 +331,11 @@ function formatForTelegram(text) {
             ''
         );
 
-
-    // ========================================================
-    // BULLETS
-    // ========================================================
-
     answer =
         answer.replace(
             /^\s*[-*+]\s+/gm,
             '• '
         );
-
-
-    // ========================================================
-    // MARKDOWN LINKS
-    // ========================================================
 
     answer =
         answer.replace(
@@ -527,21 +343,11 @@ function formatForTelegram(text) {
             '$1 — $2'
         );
 
-
-    // ========================================================
-    // INLINE CODE
-    // ========================================================
-
     answer =
         answer.replace(
             /`([^`\n]+)`/g,
             '$1'
         );
-
-
-    // ========================================================
-    // CLEAN SOURCE HEADINGS
-    // ========================================================
 
     answer =
         answer.replace(
@@ -549,17 +355,11 @@ function formatForTelegram(text) {
             '🌐 Sources'
         );
 
-
     answer =
         answer.replace(
             /^\s*Sources?\s*:?\s*$/gim,
             '🌐 Sources'
         );
-
-
-    // ========================================================
-    // REMOVE EXCESSIVE SPACING
-    // ========================================================
 
     answer =
         answer.replace(
@@ -567,28 +367,17 @@ function formatForTelegram(text) {
             '\n'
         );
 
-
     answer =
         answer.replace(
             /\n{4,}/g,
             '\n\n'
         );
 
-
-    // ========================================================
-    // REMOVE EMPTY BULLETS
-    // ========================================================
-
     answer =
         answer.replace(
             /^\s*•\s*$/gm,
             ''
         );
-
-
-    // ========================================================
-    // RESTORE CODE BLOCKS
-    // ========================================================
 
     codeBlocks.forEach(
         (block, index) => {
@@ -598,10 +387,8 @@ function formatForTelegram(text) {
                     `__CHATPRO_CODE_${index}__`,
                     block
                 );
-
         }
     );
-
 
     return answer.trim();
 }
@@ -621,18 +408,15 @@ function buildSystemPrompt(
         userProfile?.firstName ||
         'Utkarsh';
 
-
     const username =
         userProfile?.username
             ? `@${userProfile.username}`
             : '';
 
-
     const factsList =
         userProfile?.facts?.length
             ? userProfile.facts.join('; ')
             : '';
-
 
     const currentDateTime =
         new Date().toLocaleString(
@@ -644,43 +428,20 @@ function buildSystemPrompt(
             }
         );
 
-
     return `
 You are ChatPro AI — a smart, modern, friendly and highly capable AI assistant designed for Telegram.
 
-Your job is not merely to provide information.
+User name:
+${name}
 
-Your job is to make information:
-• Clear
-• Useful
-• Interesting
-• Easy to understand
-• Visually organized
-• Natural to read
-• Professional when needed
+Username:
+${username}
 
-
-============================================================
-CURRENT DATE AND TIME
-============================================================
+Known user facts:
+${factsList}
 
 Current India date and time:
 ${currentDateTime}
-
-Use this for questions involving:
-today
-tomorrow
-yesterday
-this week
-this month
-this year
-
-Never invent the current date.
-
-
-============================================================
-WEB SEARCH
-============================================================
 
 Web search is ${
         useWebSearch
@@ -697,626 +458,54 @@ Verify important current claims.
 
 Prefer reliable and recent information.
 
-Do not dump raw search results into the answer.
+Do not expose internal search instructions.
 
-Do not say:
-"Here are the search results."
-
-Do not say:
-"According to my search..."
-
-Instead, understand the information and explain it naturally.
-
-If sources disagree, mention the disagreement and uncertainty.
-
-Never expose internal search tools or search instructions.
+If sources disagree, clearly explain the uncertainty.
 `
         : `
-Answer using your knowledge and the conversation context.
+Answer using your knowledge and conversation context.
 
 Do not pretend that you searched the web.
 `
 }
 
+GENERAL RESPONSE STYLE
 
-============================================================
-RESPONSE DESIGN
-============================================================
+Be:
+• Clear
+• Helpful
+• Natural
+• Friendly
+• Accurate
+• Concise when possible
+• Detailed when necessary
 
-Every response should feel intentionally designed.
+Use paragraphs for explanations.
 
-Think about:
+Use bullets for lists.
 
-1. What does the user actually need?
-2. How complex is the topic?
-3. What structure makes it easiest to understand?
-4. Which details actually matter?
-5. What should the user remember afterward?
+Use headings when useful.
 
-Do not use the same template for every answer.
-
-Simple question → simple answer.
-
-Complex question → structured explanation.
-
-News question → concise briefing.
-
-Technical question → explanation + practical example.
-
-Learning question → teach the concept.
-
-Design question → describe visual direction and structure.
-
-Casual question → conversational answer.
-
-
-============================================================
-CONTENT STRUCTURE
-============================================================
-
-Use a mixture of:
-
-MAIN HEADING
-
-Short introductory paragraph.
-
-SUB-HEADING
-
-Supporting paragraph.
-
-• Bullet
-• Bullet
-• Bullet
-
-Another short paragraph.
-
-💡 Key takeaway
-
-Use only the parts that genuinely help.
-
-Do NOT force every response into a huge template.
-
-
-============================================================
-PARAGRAPHS
-============================================================
-
-Paragraphs are important.
-
-Do not turn everything into bullets.
-
-Use paragraphs when explaining:
-
-• Context
-• Meaning
-• Reasoning
-• Background
-• Cause and effect
-• Recommendations
-• Concepts
-
-Use bullets when listing:
-
-• Features
-• Steps
-• Advantages
-• Disadvantages
-• Requirements
-• Options
-• Key facts
-
-
-============================================================
-HEADINGS
-============================================================
-
-Use attractive but professional headings.
-
-Examples:
-
-🎯 Overview
-
-📰 What's happening
-
-🔹 Key developments
-
-💡 Why it matters
-
-🧩 How it works
-
-💻 Technical side
-
-🎨 Design direction
-
-✨ Visual style
-
-📌 Important points
-
-🚀 Next steps
-
-🌐 Sources
-
-Do not overuse headings.
-
-Usually 2–5 meaningful sections are enough for a detailed answer.
-
-
-============================================================
-EDUCATIONAL ANSWERS
-============================================================
-
-When teaching something:
-
-Start with the simplest explanation.
-
-Then explain the idea.
-
-Then show how it works.
-
-Then give an example.
-
-Then provide a short takeaway.
-
-Example structure:
-
-🎯 Binary Search
-
-Binary search is a faster way to find an element in a sorted array.
-
-🧩 How it works
-
-Instead of checking every element, it repeatedly cuts the search area in half.
-
-• Check the middle
-• Decide which half can contain the answer
-• Ignore the other half
-• Repeat
-
-💡 Example
-
-...
-
-🚀 Remember
-
-Binary search needs sorted data and runs in O(log n).
-
-
-============================================================
-TECHNICAL ANSWERS
-============================================================
+Do not force every answer into a huge structure.
 
 For programming questions:
-
-• Explain before overwhelming with code.
-• Use practical examples.
-• Keep code correct.
+• Explain the concept clearly.
+• Give correct practical examples.
 • Preserve code blocks.
-• Explain important lines afterward when useful.
-• Mention common mistakes when relevant.
-• Prefer real-world understanding over textbook definitions.
+• Mention important mistakes when useful.
 
+For learning questions:
+• Start simple.
+• Explain how it works.
+• Give an example.
+• End with a useful takeaway.
 
-============================================================
-NEWS / CURRENT INFORMATION
-============================================================
+Never invent facts.
 
-When discussing current information:
+If uncertain, say so.
 
-Start with a short factual overview.
-
-Then:
-
-📰 What happened
-
-Short paragraph.
-
-🔹 Key developments
-
-• Important development
-• Important development
-• Important development
-
-📌 Context
-
-Explain what led to the development if useful.
-
-💡 Why it matters
-
-Explain the practical significance.
-
-🌐 Sources
-
-Keep sources concise.
-
-Never exaggerate.
-
-Never present speculation as fact.
-
-Clearly distinguish confirmed information from claims or reports.
-
-
-============================================================
-COMPARISONS
-============================================================
-
-For comparisons:
-
-Start with the main difference in one short paragraph.
-
-Then organize each side.
-
-🔹 Option A
-
-Short paragraph.
-
-• Strength
-• Limitation
-• Best use
-
-🔹 Option B
-
-Short paragraph.
-
-• Strength
-• Limitation
-• Best use
-
-💡 Key difference
-
-Give the practical distinction without declaring an unnecessary winner.
-
-
-============================================================
-PROJECT / WEBSITE / UI DESIGN
-============================================================
-
-When discussing website, application or UI design, think like a professional product designer.
-
-Cover relevant areas such as:
-
-🎨 Visual direction
-
-Explain the overall visual personality.
-
-🧩 Layout
-
-Explain page structure and hierarchy.
-
-🔤 Typography
-
-Explain font style, scale and hierarchy.
-
-🎨 Color system
-
-Explain primary, secondary and accent colors.
-
-✨ Micro-interactions
-
-Mention hover effects, transitions, loading states and feedback.
-
-📱 Responsive behavior
-
-Mention desktop, tablet and mobile behavior.
-
-♿ Accessibility
-
-Mention readable contrast, keyboard navigation, labels and usable interaction where relevant.
-
-The answer should feel like a real design specification rather than random feature ideas.
-
-
-============================================================
-LOGO / BRAND DESIGN
-============================================================
-
-When discussing a logo:
-
-🎨 Concept
-
-Explain the core visual idea.
-
-🔷 Symbol
-
-Explain the icon, shape or mark.
-
-🎨 Color
-
-Explain the color direction.
-
-🔤 Typography
-
-Explain the font direction.
-
-💡 Brand meaning
-
-Explain what the visual identity communicates.
-
-📱 Applications
-
-Consider:
-
-• Website
-• App
-• Social media
-• Profile picture
-• Dark background
-• Light background
-• Print
-
-Keep it professional and practical.
-
-
-============================================================
-CREATIVE ANSWERS
-============================================================
-
-For creative requests:
-
-Be imaginative.
-
-However, remain useful.
-
-Use:
-
-• Visual concepts
-• Composition
-• Mood
-• Typography
-• Color
-• Layout
-• Details
-• Variations
-
-Make ideas feel polished and production-ready.
-
-Do not just throw random adjectives at the user.
-
-
-============================================================
-INTERESTING WRITING
-============================================================
-
-Write with personality.
-
-Avoid robotic phrases such as:
-
-"Certainly!"
-"Of course!"
-"Absolutely!"
-"Here are the results!"
-"Let's dive into this!"
-"I hope this helps!"
-
-Do not repeatedly say these.
-
-Instead, begin naturally.
-
-Example:
-
-Bad:
-"Certainly! Here is a comprehensive explanation of Java."
-
-Better:
-"Java becomes much easier once you understand one idea: objects combine data with the behavior that operates on that data."
-
-Make important insights stand out naturally.
-
-Useful phrases include:
-
-💡 The key idea:
-
-📌 The important part:
-
-👉 In practice:
-
-🚀 The takeaway:
-
-Use these only when appropriate.
-
-
-============================================================
-PROFESSIONAL + ENTERTAINING
-============================================================
-
-Be professional without sounding corporate.
-
-Be entertaining without becoming childish.
-
-Be impressive through:
-
-• Clarity
-• Insight
-• Structure
-• Examples
-• Good wording
-• Useful details
-• Strong organization
-
-Not through:
-
-• Excessive emojis
-• Huge paragraphs
-• Unnecessary headings
-• Repetition
-• Fake enthusiasm
-• Sensational language
-
-
-============================================================
-TELEGRAM FORMATTING
-============================================================
-
-IMPORTANT:
-
-The final response must be plain Telegram-friendly text.
-
-DO NOT use:
-
-#
-##
-###
-
-DO NOT use:
-
-**bold**
-
-*italic*
-
----
-
-___
-
-Markdown blockquotes.
-
-Instead use:
-
-• bullets
-
-1. numbered lists
-
-Short paragraphs.
-
-Professional emoji headings when useful.
-
-Keep the visual hierarchy clean.
-
-
-============================================================
-EMOJI RULE
-============================================================
-
-Use emojis intelligently.
-
-Good:
-
-🎯 Overview
-💡 Key takeaway
-🚀 Next steps
-🎨 Design
-💻 Code
-📰 News
-
-Bad:
-
-😀 Java is a programming language.
-🔥 It was created...
-🚀 It runs...
-💯 It is useful...
-
-Do not put emojis before every sentence.
-
-
-============================================================
-CODE
-============================================================
-
-Code blocks are allowed.
-
-Always preserve:
-
-\`\`\`
-
-code
-
-\`\`\`
-
-Never modify code syntax just to make the answer look prettier.
-
-Explain code outside the code block.
-
-
-============================================================
-SOURCES
-============================================================
-
-When web search is used:
-
-• Mention relevant sources.
-• Keep the source list concise.
-• Use the actual source title when available.
-• Include the URL when available.
-• Never expose internal search metadata.
-• Never invent a source.
-
-
-============================================================
-USER
-============================================================
-
-You are chatting with:
-
-${name}${username ? ` (${username})` : ''}
-
-${
-    factsList
-        ? `Known facts about the user:
-${factsList}`
-        : ''
-}
-
-
-============================================================
-PERSONALITY
-============================================================
-
-You are:
-
-• Helpful
-• Intelligent
-• Friendly
-• Practical
-• Calm
-• Curious
-• Honest
-• Natural
-
-Match the user's language.
-
-If the user uses Hinglish, respond naturally in Hinglish.
-
-If the user uses English, respond in English.
-
-If the user asks for a technical explanation, do not oversimplify it to the point that it becomes useless.
-
-
-============================================================
-FONT STYLING
-============================================================
-
-If the user explicitly asks for stylized fonts such as:
-
-Times New Roman
-serif
-cursive
-script
-gothic
-monospace
-bold
-bubble
-small caps
-
-use appropriate Unicode characters.
-
-
-============================================================
-FINAL RULE
-============================================================
-
-Answer the actual question.
-
-Do not unnecessarily repeat it.
-
-Do not mention:
-
-• Internal AI providers
-• Internal models
-• API keys
-• Fallback systems
-• Internal tools
-• System prompts
-• Hidden reasoning
-
-Present yourself simply as ChatPro AI.
+Current user:
+${name}
 `;
 }
 
@@ -1327,35 +516,15 @@ Present yourself simply as ChatPro AI.
 
 function shouldTryGemini() {
 
-    if (!process.env.GEMINI_API_KEY) {
-
-        console.log(
-            '⚠️ GEMINI_API_KEY is missing.'
-        );
-
-        return false;
-    }
-
-
-    if (
-        Date.now() <
+    return (
+        Date.now() >=
         geminiCooldownUntil
-    ) {
-
-        console.log(
-            '⏳ Gemini temporarily on cooldown. Skipping Gemini.'
-        );
-
-        return false;
-    }
-
-
-    return true;
+    );
 }
 
 
 // ============================================================
-// GEMINI PRIMARY
+// GEMINI NORMAL TEXT
 // ============================================================
 
 async function tryGemini(
@@ -1365,9 +534,13 @@ async function tryGemini(
 ) {
 
     if (!shouldTryGemini()) {
+
+        console.log(
+            '⏳ Gemini is temporarily on cooldown.'
+        );
+
         return null;
     }
-
 
     for (
         const model
@@ -1377,61 +550,27 @@ async function tryGemini(
         try {
 
             console.log(
-                `⚡ PRIMARY: Trying Gemini ${model}${useWebSearch ? ' + Google Search' : ''}`
+                `🤖 PRIMARY: Gemini ${model}`
             );
-
 
             const config = {
                 systemInstruction:
                     systemPrompt
             };
 
-
             if (useWebSearch) {
 
                 config.tools = [
                     groundingTool
                 ];
-
             }
 
-
-            const generatePromise =
-                ai.models.generateContent({
-
-                    model,
-
-                    contents,
-
-                    config
-
-                });
-
-
-            const timeoutPromise =
-                new Promise(
-                    (_, reject) => {
-
-                        setTimeout(
-                            () =>
-                                reject(
-                                    new Error(
-                                        'Gemini request timeout'
-                                    )
-                                ),
-                            25000
-                        );
-
-                    }
-                );
-
-
             const response =
-                await Promise.race([
-                    generatePromise,
-                    timeoutPromise
-                ]);
-
+                await ai.models.generateContent({
+                    model,
+                    contents,
+                    config
+                });
 
             if (
                 response &&
@@ -1439,124 +578,27 @@ async function tryGemini(
             ) {
 
                 console.log(
-                    `✅ Gemini response received using ${model}`
+                    `✅ Gemini ${model} response received.`
                 );
 
-
-                let answer =
-                    formatForTelegram(
-                        response.text
-                    );
-
-
-                // =================================================
-                // WEB SOURCES
-                // =================================================
-
-                if (useWebSearch) {
-
-                    try {
-
-                        const chunks =
-                            response
-                                .candidates?.[0]
-                                ?.groundingMetadata
-                                ?.groundingChunks || [];
-
-
-                        const sources = [];
-
-
-                        for (
-                            const chunk
-                            of chunks
-                        ) {
-
-                            const web =
-                                chunk?.web;
-
-
-                            if (
-                                web?.uri &&
-                                !sources.some(
-                                    source =>
-                                        source.uri ===
-                                        web.uri
-                                )
-                            ) {
-
-                                sources.push({
-
-                                    title:
-                                        web.title ||
-                                        'Source',
-
-                                    uri:
-                                        web.uri
-
-                                });
-
-                            }
-
-                        }
-
-
-                        if (
-                            sources.length > 0
-                        ) {
-
-                            const sourceLines =
-                                sources
-                                    .slice(0, 5)
-                                    .map(
-                                        source =>
-                                            `• ${source.title}\n  ${source.uri}`
-                                    )
-                                    .join('\n');
-
-
-                            answer +=
-                                `\n\n🌐 Sources\n\n${sourceLines}`;
-
-                        }
-
-                    } catch (error) {
-
-                        console.log(
-                            'Source extraction skipped:',
-                            error.message
-                        );
-
-                    }
-
-                }
-
-
-                return formatForTelegram(
-                    answer
-                );
-
+                return response.text;
             }
 
         } catch (error) {
 
             const errorMessage =
                 error?.message ||
-                error?.status ||
-                'unknown error';
-
+                'Unknown Gemini error';
 
             console.error(
                 `❌ Gemini ${model} failed:`,
                 errorMessage
             );
 
-
             const lowerError =
                 String(
                     errorMessage
                 ).toLowerCase();
-
 
             const quotaError =
                 lowerError.includes('429') ||
@@ -1565,32 +607,16 @@ async function tryGemini(
                 lowerError.includes('rate limit') ||
                 lowerError.includes('too many requests');
 
-
             if (quotaError) {
-
-                console.log(
-                    '🚨 Gemini quota/rate limit detected.'
-                );
-
 
                 geminiCooldownUntil =
                     Date.now() +
                     GEMINI_COOLDOWN;
 
-
                 break;
-
             }
-
         }
-
     }
-
-
-    console.log(
-        '⚠️ Gemini unavailable. Switching to Groq.'
-    );
-
 
     return null;
 }
@@ -1600,17 +626,11 @@ async function tryGemini(
 // GROQ FALLBACK
 // ============================================================
 
-function shouldTryGroq() {
-
-    if (!process.env.GROQ_API_KEY) {
-
-        console.log(
-            '⚠️ GROQ_API_KEY is missing.'
-        );
-
-        return false;
-    }
-
+async function tryGroq(
+    history,
+    newMessage,
+    systemPrompt
+) {
 
     if (
         Date.now() <
@@ -1618,66 +638,57 @@ function shouldTryGroq() {
     ) {
 
         console.log(
-            '⏳ Groq temporarily on cooldown. Skipping Groq.'
+            '⏳ Groq is temporarily on cooldown.'
         );
 
-        return false;
-    }
-
-
-    return true;
-}
-
-
-// ============================================================
-// GROQ TEXT RESPONSE
-// ============================================================
-
-async function tryGroq(
-    history,
-    newMessage,
-    systemPrompt
-) {
-
-    if (!shouldTryGroq()) {
         return null;
     }
 
+    if (
+        !process.env.GROQ_API_KEY
+    ) {
+
+        console.log(
+            '⚠️ GROQ_API_KEY not configured.'
+        );
+
+        return null;
+    }
 
     try {
 
         console.log(
-            '⚡ FALLBACK: Trying Groq openai/gpt-oss-20b'
+            '🔄 BACKUP: Groq'
         );
-
 
         const messages = [
 
             {
                 role: 'system',
-                content: systemPrompt
+                content:
+                    systemPrompt
             }
 
         ];
 
-
         for (
             const message
-            of (history || [])
+            of (
+                history || []
+            )
         ) {
 
-            let role = 'user';
-
+            let role =
+                'user';
 
             if (
                 message.role === 'model' ||
                 message.role === 'assistant'
             ) {
 
-                role = 'assistant';
-
+                role =
+                    'assistant';
             }
-
 
             if (
                 message.text &&
@@ -1694,13 +705,9 @@ async function tryGroq(
                         String(
                             message.text
                         )
-
                 });
-
             }
-
         }
-
 
         messages.push({
 
@@ -1710,9 +717,7 @@ async function tryGroq(
                 String(
                     newMessage || ''
                 )
-
         });
-
 
         const response =
             await fetch(
@@ -1728,7 +733,6 @@ async function tryGroq(
 
                         'Content-Type':
                             'application/json'
-
                     },
 
                     body:
@@ -1744,24 +748,19 @@ async function tryGroq(
 
                             max_completion_tokens:
                                 2048
-
                         }),
 
                     signal:
                         AbortSignal.timeout(
                             25000
                         )
-
                 }
             );
-
 
         const raw =
             await response.text();
 
-
         let data = null;
-
 
         try {
 
@@ -1772,29 +771,28 @@ async function tryGroq(
 
         } catch {
 
-            data = null;
-
+            data =
+                null;
         }
-
 
         if (!response.ok) {
 
             const errorMessage =
                 data?.error?.message ||
-                raw.slice(0, 500) ||
+                raw.slice(
+                    0,
+                    500
+                ) ||
                 `HTTP ${response.status}`;
-
 
             console.error(
                 `❌ Groq HTTP ${response.status}: ${errorMessage}`
             );
 
-
             const lowerError =
                 String(
                     errorMessage
                 ).toLowerCase();
-
 
             const quotaError =
                 response.status === 429 ||
@@ -1808,23 +806,18 @@ async function tryGroq(
                     'too many requests'
                 );
 
-
             if (quotaError) {
 
                 groqCooldownUntil =
                     Date.now() +
                     GROQ_COOLDOWN;
-
             }
-
 
             return null;
         }
 
-
         const answer =
             data?.choices?.[0]?.message?.content;
-
 
         if (
             !answer ||
@@ -1833,18 +826,12 @@ async function tryGroq(
             ).trim()
         ) {
 
-            console.error(
-                '❌ Groq returned an empty response.'
-            );
-
             return null;
         }
-
 
         console.log(
             '✅ Groq response received.'
         );
-
 
         return formatForTelegram(
             String(
@@ -1852,14 +839,12 @@ async function tryGroq(
             )
         );
 
-
     } catch (error) {
 
         console.error(
             '❌ Groq fallback error:',
             error.message || error
         );
-
 
         return null;
     }
@@ -1881,11 +866,9 @@ async function generateAIResponse(
             newMessage
         );
 
-
     console.log(
         `🌐 Web search: ${useWebSearch ? 'ENABLED' : 'SKIPPED'}`
     );
-
 
     const systemPrompt =
         buildSystemPrompt(
@@ -1893,9 +876,8 @@ async function generateAIResponse(
             useWebSearch
         );
 
-
     const contents =
-        history.map(
+        (history || []).map(
             message => ({
 
                 role:
@@ -1909,10 +891,8 @@ async function generateAIResponse(
                             message.text
                     }
                 ]
-
             })
         );
-
 
     contents.push({
 
@@ -1924,13 +904,7 @@ async function generateAIResponse(
                     newMessage
             }
         ]
-
     });
-
-
-    // ========================================================
-    // GEMINI PRIMARY
-    // ========================================================
 
     try {
 
@@ -1941,13 +915,11 @@ async function generateAIResponse(
                 useWebSearch
             );
 
-
         if (geminiResult) {
 
             return formatForTelegram(
                 geminiResult
             );
-
         }
 
     } catch (error) {
@@ -1956,13 +928,7 @@ async function generateAIResponse(
             'Gemini primary error:',
             error.message || error
         );
-
     }
-
-
-    // ========================================================
-    // GROQ BACKUP
-    // ========================================================
 
     try {
 
@@ -1973,13 +939,11 @@ async function generateAIResponse(
                 systemPrompt
             );
 
-
         if (groqResult) {
 
             return formatForTelegram(
                 groqResult
             );
-
         }
 
     } catch (error) {
@@ -1988,20 +952,13 @@ async function generateAIResponse(
             'Groq backup error:',
             error.message || error
         );
-
     }
-
-
-    // ========================================================
-    // OPENROUTER BACKUP
-    // ========================================================
 
     try {
 
         console.log(
             `🔄 BACKUP: OpenRouter${useWebSearch ? ' + Web Search' : ''}`
         );
-
 
         const answer =
             await callOpenRouter(
@@ -2010,7 +967,6 @@ async function generateAIResponse(
                 systemPrompt,
                 useWebSearch
             );
-
 
         return formatForTelegram(
             answer
@@ -2022,7 +978,6 @@ async function generateAIResponse(
             '❌ OpenRouter backup error:',
             error.message || error
         );
-
 
         return "I'm having a brief moment right now. Please try sending your message again in a few seconds.";
     }
@@ -2045,19 +1000,12 @@ async function analyzeImage(
         throw new Error(
             'No image data received.'
         );
-
     }
-
 
     const base64Image =
         imageBuffer.toString(
             'base64'
         );
-
-
-    // ========================================================
-    // GEMINI IMAGE PRIMARY
-    // ========================================================
 
     if (
         shouldTryGemini()
@@ -2074,7 +1022,6 @@ async function analyzeImage(
                     `🖼️ PRIMARY: Gemini ${model} image analysis`
                 );
 
-
                 const response =
                     await ai.models.generateContent({
 
@@ -2085,7 +1032,8 @@ async function analyzeImage(
                             {
                                 inlineData: {
                                     mimeType,
-                                    data: base64Image
+                                    data:
+                                        base64Image
                                 }
                             },
 
@@ -2098,19 +1046,15 @@ Study the image carefully and answer the user's request.
 USER REQUEST:
 ${userQuestion}
 
-
-============================================================
-VISUAL ANALYSIS
-============================================================
-
 Pay attention to:
 
 • Main subject
-• Characters / people / animals
-• Facial expression
-• Emotion
-• Pose or action
+• People
+• Animals
 • Objects
+• Facial expressions
+• Emotion
+• Pose
 • Clothing
 • Colors
 • Background
@@ -2120,91 +1064,35 @@ Pay attention to:
 • UI elements
 • Overall mood
 
-
-============================================================
-STICKER ANALYSIS
-============================================================
-
-If the image is a Telegram sticker:
+If it is a Telegram sticker:
 
 Explain:
-
-🎭 What is shown
-
-🙂 What expression or emotion is visible
-
-💭 What the sticker appears to communicate
-
-💬 How someone might naturally use it in a conversation
-
-🎨 Important visual details
-
-If it is an animated or video sticker and only a preview
-frame is available, analyze only what is visible.
-
-Do NOT claim that you observed movement that is not visible.
-
-
-============================================================
-SCREENSHOT ANALYSIS
-============================================================
+• What is shown
+• Emotion
+• What it communicates
+• Natural use in conversation
+• Important visual details
 
 If it is a screenshot:
 
-• Identify the application or interface if clearly visible.
-• Explain important visible elements.
-• Read visible text when possible.
-• Identify errors or UI elements when relevant.
-• Do not invent information outside the screenshot.
+• Identify the application if clearly visible.
+• Read visible text.
+• Explain errors or UI elements.
+• Do not invent information.
 
+Describe only what is visible.
 
-============================================================
-ACCURACY
-============================================================
-
-Describe only what is actually visible.
-
-Do not invent:
-
-• People
-• Objects
-• Text
-• Locations
-• Events
-• Brands
-
-If something is uncertain, say that it is uncertain.
+If uncertain, say so.
 
 Answer the user's specific question first.
 
-Keep the response natural, useful and interesting.
+Keep the response useful and natural.
 
-Use paragraphs for explanations.
-
-Use bullets for lists.
-
-Use a few relevant emoji headings when helpful.
-
-Do not use Markdown headings.
-
-Do not use:
-
-**
-*
-#
-##
-###
-
-Do not use horizontal separators.
-
-Never output internal tags.
+Do not output internal tags.
 `
                             }
-
                         ]
-
                     });
-
 
                 if (
                     response &&
@@ -2215,11 +1103,9 @@ Never output internal tags.
                         `✅ Gemini image analysis successful using ${model}`
                     );
 
-
                     return formatForTelegram(
                         response.text
                     );
-
                 }
 
             } catch (error) {
@@ -2228,18 +1114,15 @@ Never output internal tags.
                     error?.message ||
                     'unknown error';
 
-
                 console.error(
                     `❌ Gemini image ${model} failed:`,
                     errorMessage
                 );
 
-
                 const lowerError =
                     String(
                         errorMessage
                     ).toLowerCase();
-
 
                 const quotaError =
                     lowerError.includes('429') ||
@@ -2248,33 +1131,21 @@ Never output internal tags.
                     lowerError.includes('rate limit') ||
                     lowerError.includes('too many requests');
 
-
                 if (quotaError) {
 
                     geminiCooldownUntil =
                         Date.now() +
                         GEMINI_COOLDOWN;
 
-
                     break;
-
                 }
-
             }
-
         }
-
     }
-
-
-    // ========================================================
-    // OPENROUTER IMAGE BACKUP
-    // ========================================================
 
     console.log(
         '🔄 BACKUP: OpenRouter image analysis'
     );
-
 
     const answer =
         await analyzeImageWithOpenRouter(
@@ -2282,7 +1153,6 @@ Never output internal tags.
             mimeType,
             userQuestion
         );
-
 
     return formatForTelegram(
         answer
@@ -2292,6 +1162,27 @@ Never output internal tags.
 
 // ============================================================
 // IMAGE EDITING - GEMINI 3.1 FLASH IMAGE
+//
+// Input:
+// JPG
+// JPEG
+// PNG
+// WEBP
+// GIF
+// AVIF
+// TIFF
+// BMP
+// etc.
+//
+// Gemini receives the original MIME type when supported.
+// If Gemini rejects the input type, the request is retried
+// internally as JPEG.
+//
+// Gemini output is requested as JPEG because the current
+// Interactions endpoint accepts image/jpeg.
+//
+// The resulting JPEG buffer can then be converted by Sharp
+// in bot.js to any Telegram-supported output format.
 // ============================================================
 
 async function editImage(
@@ -2305,51 +1196,121 @@ async function editImage(
         throw new Error(
             'No image data received for editing.'
         );
-
     }
-
 
     if (
         !editInstruction ||
-        !String(editInstruction).trim()
+        !String(
+            editInstruction
+        ).trim()
     ) {
 
         throw new Error(
             'No image editing instruction received.'
         );
-
     }
-
 
     const apiKey =
         process.env.GEMINI_API_KEY;
-
 
     if (!apiKey) {
 
         throw new Error(
             'GEMINI_API_KEY is missing from environment variables.'
         );
-
     }
 
+    const originalMimeType =
+        String(
+            mimeType || 'image/jpeg'
+        ).toLowerCase();
 
     const base64Image =
         imageBuffer.toString(
             'base64'
         );
 
-
     console.log(
         '🎨 IMAGE EDIT: Gemini 3.1 Flash Image'
     );
 
+    console.log(
+        '📦 Input MIME:',
+        originalMimeType
+    );
 
     console.log(
         '📝 Edit instruction:',
         editInstruction
     );
 
+
+    // ========================================================
+    // FIRST REQUEST
+    // ========================================================
+
+    const firstResult =
+        await requestGeminiImageEdit(
+            apiKey,
+            base64Image,
+            originalMimeType,
+            editInstruction
+        );
+
+
+    // ========================================================
+    // IF GEMINI REJECTS THE INPUT FORMAT
+    // RETRY AS JPEG
+    // ========================================================
+
+    if (
+        firstResult &&
+        firstResult.retryWithJpeg
+    ) {
+
+        console.log(
+            '🔄 Gemini rejected the original image MIME type.'
+        );
+
+        console.log(
+            '🔄 Retrying image edit using JPEG input.'
+        );
+
+        const jpegBuffer =
+            await convertImageToJpeg(
+                imageBuffer
+            );
+
+        const jpegBase64 =
+            jpegBuffer.toString(
+                'base64'
+            );
+
+        const retryResult =
+            await requestGeminiImageEdit(
+                apiKey,
+                jpegBase64,
+                'image/jpeg',
+                editInstruction
+            );
+
+        return retryResult;
+    }
+
+    return firstResult;
+}
+
+
+// ============================================================
+// GEMINI IMAGE EDIT REQUEST
+// ============================================================
+
+async function requestGeminiImageEdit(
+    apiKey,
+    base64Image,
+    mimeType,
+    editInstruction
+) {
 
     const response =
         await fetch(
@@ -2365,7 +1326,6 @@ async function editImage(
 
                     'Content-Type':
                         'application/json'
-
                 },
 
                 body:
@@ -2391,19 +1351,17 @@ IMPORTANT EDITING RULES:
 - Use the provided image as the source image.
 - Make only the requested changes.
 - Preserve the original composition unless the user asks otherwise.
-- Preserve the original people, faces, clothing, objects and main subject unless the user asks to change them.
-- Preserve the original camera perspective.
+- Preserve original people, faces, clothing, objects and main subjects unless explicitly requested.
+- Preserve camera perspective.
 - Preserve lighting and colors where possible.
-- If adding a person or object, integrate it naturally into the existing scene.
-- Match the added subject's scale, perspective, lighting, shadows and image quality.
+- If adding a person or object, integrate it naturally.
+- Match scale, perspective, lighting, shadows and image quality.
 - If removing something, reconstruct the affected area naturally.
 - If changing the background, keep the main subject unchanged unless explicitly requested.
-- Make the result look like a natural photograph when the source image is photographic.
-- Do not return instructions or an explanation instead of the edited image.
+- Make the result look natural.
+- Do not return instructions instead of an image.
 - Return the edited image.`
-
                             },
-
 
                             {
                                 type:
@@ -2414,9 +1372,7 @@ IMPORTANT EDITING RULES:
 
                                 data:
                                     base64Image
-
                             }
-
                         ],
 
                         response_format: {
@@ -2425,30 +1381,24 @@ IMPORTANT EDITING RULES:
                                 'image',
 
                             mime_type:
-                                'image/png',
+                                'image/jpeg',
 
                             image_size:
                                 '1K'
-
                         }
-
                     }),
 
                 signal:
                     AbortSignal.timeout(
                         90000
                     )
-
             }
         );
-
 
     const raw =
         await response.text();
 
-
     let data = null;
-
 
     try {
 
@@ -2459,10 +1409,9 @@ IMPORTANT EDITING RULES:
 
     } catch {
 
-        data = null;
-
+        data =
+            null;
     }
-
 
     if (!response.ok) {
 
@@ -2474,16 +1423,49 @@ IMPORTANT EDITING RULES:
             ) ||
             `HTTP ${response.status}`;
 
-
         console.error(
             `❌ Gemini image edit HTTP ${response.status}: ${errorMessage}`
         );
 
 
+        // ====================================================
+        // UNSUPPORTED INPUT MIME
+        // ====================================================
+
+        const lowerError =
+            String(
+                errorMessage
+            ).toLowerCase();
+
+        const unsupportedImage =
+            lowerError.includes(
+                'mime'
+            ) ||
+            lowerError.includes(
+                'image type'
+            ) ||
+            lowerError.includes(
+                'unsupported'
+            ) ||
+            lowerError.includes(
+                'not supported'
+            );
+
+        if (
+            unsupportedImage &&
+            mimeType !== 'image/jpeg'
+        ) {
+
+            return {
+                retryWithJpeg:
+                    true
+            };
+        }
+
+
         throw new Error(
             `Gemini image editing failed: ${errorMessage}`
         );
-
     }
 
 
@@ -2493,7 +1475,6 @@ IMPORTANT EDITING RULES:
 
     const outputImage =
         data?.output_image?.data;
-
 
     if (
         outputImage &&
@@ -2506,7 +1487,6 @@ IMPORTANT EDITING RULES:
                 'base64'
             );
 
-
         if (
             buffer.length > 1000
         ) {
@@ -2515,23 +1495,22 @@ IMPORTANT EDITING RULES:
                 `✅ Gemini image edit successful (${buffer.length} bytes)`
             );
 
-
             return {
 
                 buffer,
 
                 provider:
-                    'Gemini 3.1 Flash Image'
+                    'Gemini 3.1 Flash Image',
 
+                mimeType:
+                    'image/jpeg'
             };
-
         }
-
     }
 
 
     // ========================================================
-    // FALLBACK: SEARCH THROUGH STEPS
+    // SEARCH INTERACTION STEPS
     // ========================================================
 
     const steps =
@@ -2540,7 +1519,6 @@ IMPORTANT EDITING RULES:
         )
             ? data.steps
             : [];
-
 
     for (
         const step
@@ -2553,7 +1531,6 @@ IMPORTANT EDITING RULES:
             )
                 ? step.content
                 : [];
-
 
         for (
             const block
@@ -2571,7 +1548,6 @@ IMPORTANT EDITING RULES:
                         'base64'
                     );
 
-
                 if (
                     buffer.length > 1000
                 ) {
@@ -2580,22 +1556,19 @@ IMPORTANT EDITING RULES:
                         `✅ Gemini image edit successful from interaction step (${buffer.length} bytes)`
                     );
 
-
                     return {
 
                         buffer,
 
                         provider:
-                            'Gemini 3.1 Flash Image'
+                            'Gemini 3.1 Flash Image',
 
+                        mimeType:
+                            'image/jpeg'
                     };
-
                 }
-
             }
-
         }
-
     }
 
 
@@ -2603,15 +1576,15 @@ IMPORTANT EDITING RULES:
         '❌ Gemini image edit returned no image.'
     );
 
-
     console.error(
         'Gemini response:',
-        JSON.stringify(data).slice(
+        JSON.stringify(
+            data
+        ).slice(
             0,
-            2000
+            3000
         )
     );
-
 
     throw new Error(
         'Gemini image editing returned no image.'
@@ -2620,11 +1593,51 @@ IMPORTANT EDITING RULES:
 
 
 // ============================================================
+// CONVERT ANY IMAGE TO JPEG
+// ============================================================
+
+async function convertImageToJpeg(
+    imageBuffer
+) {
+
+    try {
+
+        const sharp =
+            require('sharp');
+
+        return await sharp(
+            imageBuffer
+        )
+            .rotate()
+            .jpeg({
+                quality:
+                    95
+            })
+            .toBuffer();
+
+    } catch (error) {
+
+        console.error(
+            '❌ Image JPEG conversion failed:',
+            error.message
+        );
+
+        throw new Error(
+            `Unable to convert image to JPEG: ${error.message}`
+        );
+    }
+}
+
+
+// ============================================================
 // EXPORTS
 // ============================================================
 
 module.exports = {
+
     generateAIResponse,
+
     analyzeImage,
+
     editImage
 };
