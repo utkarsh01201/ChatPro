@@ -5,9 +5,11 @@ const {
     analyzeImageWithOpenRouter
 } = require('./openrouter');
 
+const sharp = require('sharp');
+
 
 // ============================================================
-// GEMINI - PRIMARY
+// GEMINI - PRIMARY FOR NORMAL AI / IMAGE UNDERSTANDING
 // ============================================================
 
 const ai = new GoogleGenAI({
@@ -1161,28 +1163,26 @@ Do not output internal tags.
 
 
 // ============================================================
-// IMAGE EDITING - GEMINI 3.1 FLASH IMAGE
+// CLOUDFLARE IMAGE EDITING
 //
-// Input:
+// PRIMARY IMAGE EDITOR
+//
+// Uses:
+// FLUX.1 Kontext Pro
+//
+// Supports:
 // JPG
 // JPEG
 // PNG
 // WEBP
-// GIF
 // AVIF
 // TIFF
-// BMP
-// etc.
+// GIF
+// HEIC / HEIF where Sharp can decode
 //
-// Gemini receives the original MIME type when supported.
-// If Gemini rejects the input type, the request is retried
-// internally as JPEG.
+// Cloudflare receives the image as a base64 data URI.
 //
-// Gemini output is requested as JPEG because the current
-// Interactions endpoint accepts image/jpeg.
-//
-// The resulting JPEG buffer can then be converted by Sharp
-// in bot.js to any Telegram-supported output format.
+// Gemini is only used as a fallback if Cloudflare fails.
 // ============================================================
 
 async function editImage(
@@ -1210,28 +1210,13 @@ async function editImage(
         );
     }
 
-    const apiKey =
-        process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-
-        throw new Error(
-            'GEMINI_API_KEY is missing from environment variables.'
-        );
-    }
-
     const originalMimeType =
         String(
             mimeType || 'image/jpeg'
         ).toLowerCase();
 
-    const base64Image =
-        imageBuffer.toString(
-            'base64'
-        );
-
     console.log(
-        '🎨 IMAGE EDIT: Gemini 3.1 Flash Image'
+        '🎨 IMAGE EDIT REQUEST'
     );
 
     console.log(
@@ -1246,78 +1231,529 @@ async function editImage(
 
 
     // ========================================================
-    // FIRST REQUEST
+    // CLOUDFLARE PRIMARY
     // ========================================================
 
-    const firstResult =
-        await requestGeminiImageEdit(
-            apiKey,
-            base64Image,
-            originalMimeType,
-            editInstruction
-        );
+    try {
 
-
-    // ========================================================
-    // IF GEMINI REJECTS THE INPUT FORMAT
-    // RETRY AS JPEG
-    // ========================================================
-
-    if (
-        firstResult &&
-        firstResult.retryWithJpeg
-    ) {
-
-        console.log(
-            '🔄 Gemini rejected the original image MIME type.'
-        );
-
-        console.log(
-            '🔄 Retrying image edit using JPEG input.'
-        );
-
-        const jpegBuffer =
-            await convertImageToJpeg(
-                imageBuffer
-            );
-
-        const jpegBase64 =
-            jpegBuffer.toString(
-                'base64'
-            );
-
-        const retryResult =
-            await requestGeminiImageEdit(
-                apiKey,
-                jpegBase64,
-                'image/jpeg',
+        const cloudflareResult =
+            await editImageWithCloudflare(
+                imageBuffer,
+                originalMimeType,
                 editInstruction
             );
 
-        return retryResult;
+        if (
+            cloudflareResult &&
+            cloudflareResult.buffer
+        ) {
+
+            return cloudflareResult;
+        }
+
+    } catch (error) {
+
+        console.error(
+            '❌ Cloudflare image editing failed:',
+            error.message
+        );
+
+        console.log(
+            '🔄 Trying Gemini image editing fallback...'
+        );
     }
 
-    return firstResult;
+
+    // ========================================================
+    // GEMINI FALLBACK
+    // ========================================================
+
+    try {
+
+        const geminiResult =
+            await editImageWithGemini(
+                imageBuffer,
+                originalMimeType,
+                editInstruction
+            );
+
+        if (
+            geminiResult &&
+            geminiResult.buffer
+        ) {
+
+            return geminiResult;
+        }
+
+    } catch (error) {
+
+        console.error(
+            '❌ Gemini image editing fallback failed:',
+            error.message
+        );
+    }
+
+
+    // ========================================================
+    // FINAL ERROR
+    // ========================================================
+
+    throw new Error(
+        'Image editing failed with both Cloudflare and Gemini.'
+    );
 }
 
 
 // ============================================================
-// GEMINI IMAGE EDIT REQUEST
+// CLOUDFLARE FLUX KONTEXT PRO EDITOR
 // ============================================================
 
-async function requestGeminiImageEdit(
-    apiKey,
-    base64Image,
+async function editImageWithCloudflare(
+    imageBuffer,
     mimeType,
     editInstruction
 ) {
+
+    const accountId =
+        process.env.CLOUDFLARE_ACCOUNT_ID;
+
+    const token =
+        process.env.CLOUDFLARE_API_TOKEN;
+
+    if (
+        !accountId ||
+        !token
+    ) {
+
+        throw new Error(
+            'Cloudflare credentials are missing.'
+        );
+    }
+
+
+    // ========================================================
+    // NORMALIZE INPUT
+    //
+    // Cloudflare accepts base64 image data.
+    //
+    // To maximize compatibility, unsupported image formats
+    // are converted to JPEG before sending.
+    // ========================================================
+
+    let inputBuffer =
+        imageBuffer;
+
+    let inputMime =
+        mimeType;
+
+
+    const supportedMimeTypes = [
+
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/avif',
+        'image/tiff',
+        'image/gif',
+        'image/heic',
+        'image/heif'
+    ];
+
+
+    if (
+        !supportedMimeTypes.includes(
+            inputMime
+        )
+    ) {
+
+        inputBuffer =
+            await convertImageToJpeg(
+                imageBuffer
+            );
+
+        inputMime =
+            'image/jpeg';
+    }
+
+
+    // ========================================================
+    // ALSO NORMALIZE HEIC / HEIF
+    //
+    // Sharp may decode them, but JPEG gives a safer request
+    // format for external image APIs.
+    // ========================================================
+
+    if (
+        inputMime === 'image/heic' ||
+        inputMime === 'image/heif'
+    ) {
+
+        inputBuffer =
+            await convertImageToJpeg(
+                imageBuffer
+            );
+
+        inputMime =
+            'image/jpeg';
+    }
+
+
+    const base64Image =
+        inputBuffer.toString(
+            'base64'
+        );
+
+
+    const imageDataUri =
+        `data:${inputMime};base64,${base64Image}`;
+
+
+    // ========================================================
+    // CLOUDflare endpoint
+    // ========================================================
+
+    const url =
+        `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run`;
+
+
+    console.log(
+        '☁️ [Cloudflare FLUX Kontext Pro] Editing image...'
+    );
+
+
+    const requestBody = {
+
+        model:
+            'black-forest-labs/flux-1-kontext-pro',
+
+        input: {
+
+            prompt:
+                `Edit this image according to the user's request.
+
+USER REQUEST:
+${editInstruction}
+
+EDITING REQUIREMENTS:
+
+- Use the provided image as the source.
+- Preserve the main subject unless the user explicitly asks to change it.
+- Preserve faces and identity when possible.
+- Preserve clothing unless explicitly requested.
+- Preserve the original composition where possible.
+- Preserve camera perspective.
+- Preserve lighting and overall visual style.
+- Integrate newly added people or objects naturally.
+- Match scale, perspective, lighting, shadows and color.
+- If adding a person, place them naturally into the requested location.
+- If modifying the background, keep the foreground subject consistent.
+- If removing an object, reconstruct the affected background naturally.
+- Make the result look like a realistic finished image.
+- Do not describe the changes.
+- Return the edited image.`,
+
+            input_image:
+                imageDataUri,
+
+            output_format:
+                'jpeg'
+        }
+    };
+
+
+    const response =
+        await fetch(
+            url,
+            {
+
+                method:
+                    'POST',
+
+                headers: {
+
+                    'Authorization':
+                        `Bearer ${token}`,
+
+                    'Content-Type':
+                        'application/json'
+                },
+
+                body:
+                    JSON.stringify(
+                        requestBody
+                    ),
+
+                signal:
+                    AbortSignal.timeout(
+                        120000
+                    )
+            }
+        );
+
+
+    const raw =
+        await response.text();
+
+
+    let data =
+        null;
+
+
+    try {
+
+        data =
+            JSON.parse(
+                raw
+            );
+
+    } catch {
+
+        data =
+            null;
+    }
+
+
+    if (!response.ok) {
+
+        const errorMessage =
+            data?.errors?.[0]?.message ||
+            data?.result?.error ||
+            data?.error?.message ||
+            raw.slice(
+                0,
+                1000
+            ) ||
+            `HTTP ${response.status}`;
+
+        console.error(
+            `❌ Cloudflare image edit HTTP ${response.status}: ${errorMessage}`
+        );
+
+        throw new Error(
+            `Cloudflare image editing failed: ${errorMessage}`
+        );
+    }
+
+
+    // ========================================================
+    // CLOUDFLARE RETURNS IMAGE URL
+    // ========================================================
+
+    const imageUrl =
+        data?.result?.image;
+
+
+    if (
+        imageUrl &&
+        typeof imageUrl === 'string'
+    ) {
+
+        console.log(
+            '☁️ Cloudflare returned image URL.'
+        );
+
+        const imageResponse =
+            await fetch(
+                imageUrl,
+                {
+                    signal:
+                        AbortSignal.timeout(
+                            90000
+                        )
+                }
+            );
+
+
+        if (!imageResponse.ok) {
+
+            throw new Error(
+                `Unable to download Cloudflare generated image: HTTP ${imageResponse.status}`
+            );
+        }
+
+
+        const outputBuffer =
+            Buffer.from(
+                await imageResponse.arrayBuffer()
+            );
+
+
+        if (
+            outputBuffer.length <= 1000
+        ) {
+
+            throw new Error(
+                'Cloudflare returned an invalid image.'
+            );
+        }
+
+
+        console.log(
+            `✅ Cloudflare FLUX Kontext Pro edit successful (${outputBuffer.length} bytes)`
+        );
+
+
+        return {
+
+            buffer:
+                outputBuffer,
+
+            provider:
+                'Cloudflare FLUX.1 Kontext Pro',
+
+            mimeType:
+                'image/jpeg'
+        };
+    }
+
+
+    // ========================================================
+    // SOME RESPONSES MAY CONTAIN BASE64 IMAGE DATA
+    // ========================================================
+
+    const base64Output =
+        data?.result?.image_base64 ||
+        data?.result?.image_data ||
+        data?.result?.image;
+
+
+    if (
+        base64Output &&
+        typeof base64Output === 'string' &&
+        !base64Output.startsWith('http')
+    ) {
+
+        let cleanBase64 =
+            base64Output;
+
+
+        if (
+            cleanBase64.includes(',')
+        ) {
+
+            cleanBase64 =
+                cleanBase64.split(
+                    ','
+                )[1];
+        }
+
+
+        const outputBuffer =
+            Buffer.from(
+                cleanBase64,
+                'base64'
+            );
+
+
+        if (
+            outputBuffer.length > 1000
+        ) {
+
+            console.log(
+                `✅ Cloudflare FLUX Kontext Pro edit successful from base64 (${outputBuffer.length} bytes)`
+            );
+
+
+            return {
+
+                buffer:
+                    outputBuffer,
+
+                provider:
+                    'Cloudflare FLUX.1 Kontext Pro',
+
+                mimeType:
+                    'image/jpeg'
+            };
+        }
+    }
+
+
+    console.error(
+        '❌ Cloudflare returned no usable image.'
+    );
+
+    console.error(
+        'Cloudflare response:',
+        JSON.stringify(
+            data
+        ).slice(
+            0,
+            3000
+        )
+    );
+
+
+    throw new Error(
+        'Cloudflare image editing returned no usable image.'
+    );
+}
+
+
+// ============================================================
+// GEMINI IMAGE EDITING FALLBACK
+// ============================================================
+
+async function editImageWithGemini(
+    imageBuffer,
+    mimeType,
+    editInstruction
+) {
+
+    const apiKey =
+        process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+
+        throw new Error(
+            'GEMINI_API_KEY is missing from environment variables.'
+        );
+    }
+
+
+    // ========================================================
+    // ALWAYS USE JPEG FOR GEMINI FALLBACK
+    // ========================================================
+
+    let inputBuffer =
+        imageBuffer;
+
+    let inputMime =
+        mimeType;
+
+
+    if (
+        inputMime !== 'image/jpeg'
+    ) {
+
+        inputBuffer =
+            await convertImageToJpeg(
+                imageBuffer
+            );
+
+        inputMime =
+            'image/jpeg';
+    }
+
+
+    const base64Image =
+        inputBuffer.toString(
+            'base64'
+        );
+
+
+    console.log(
+        '🎨 FALLBACK IMAGE EDIT: Gemini 3.1 Flash Image'
+    );
+
 
     const response =
         await fetch(
             'https://generativelanguage.googleapis.com/v1beta/interactions',
             {
 
-                method: 'POST',
+                method:
+                    'POST',
 
                 headers: {
 
@@ -1337,6 +1773,7 @@ async function requestGeminiImageEdit(
                         input: [
 
                             {
+
                                 type:
                                     'text',
 
@@ -1346,29 +1783,28 @@ async function requestGeminiImageEdit(
 USER EDIT REQUEST:
 ${editInstruction}
 
-IMPORTANT EDITING RULES:
+IMPORTANT:
 
-- Use the provided image as the source image.
+- Use the provided image as the source.
 - Make only the requested changes.
-- Preserve the original composition unless the user asks otherwise.
-- Preserve original people, faces, clothing, objects and main subjects unless explicitly requested.
+- Preserve the original composition.
+- Preserve people, faces, clothing and main subjects unless explicitly requested.
 - Preserve camera perspective.
 - Preserve lighting and colors where possible.
-- If adding a person or object, integrate it naturally.
+- Integrate additions naturally.
 - Match scale, perspective, lighting, shadows and image quality.
-- If removing something, reconstruct the affected area naturally.
-- If changing the background, keep the main subject unchanged unless explicitly requested.
-- Make the result look natural.
-- Do not return instructions instead of an image.
-- Return the edited image.`
+- If removing an object, reconstruct the affected area naturally.
+- Return the edited image.
+`
                             },
 
                             {
+
                                 type:
                                     'image',
 
                                 mime_type:
-                                    mimeType,
+                                    inputMime,
 
                                 data:
                                     base64Image
@@ -1395,10 +1831,14 @@ IMPORTANT EDITING RULES:
             }
         );
 
+
     const raw =
         await response.text();
 
-    let data = null;
+
+    let data =
+        null;
+
 
     try {
 
@@ -1413,6 +1853,7 @@ IMPORTANT EDITING RULES:
             null;
     }
 
+
     if (!response.ok) {
 
         const errorMessage =
@@ -1423,45 +1864,6 @@ IMPORTANT EDITING RULES:
             ) ||
             `HTTP ${response.status}`;
 
-        console.error(
-            `❌ Gemini image edit HTTP ${response.status}: ${errorMessage}`
-        );
-
-
-        // ====================================================
-        // UNSUPPORTED INPUT MIME
-        // ====================================================
-
-        const lowerError =
-            String(
-                errorMessage
-            ).toLowerCase();
-
-        const unsupportedImage =
-            lowerError.includes(
-                'mime'
-            ) ||
-            lowerError.includes(
-                'image type'
-            ) ||
-            lowerError.includes(
-                'unsupported'
-            ) ||
-            lowerError.includes(
-                'not supported'
-            );
-
-        if (
-            unsupportedImage &&
-            mimeType !== 'image/jpeg'
-        ) {
-
-            return {
-                retryWithJpeg:
-                    true
-            };
-        }
-
 
         throw new Error(
             `Gemini image editing failed: ${errorMessage}`
@@ -1469,12 +1871,9 @@ IMPORTANT EDITING RULES:
     }
 
 
-    // ========================================================
-    // PRIMARY OUTPUT
-    // ========================================================
-
     const outputImage =
         data?.output_image?.data;
+
 
     if (
         outputImage &&
@@ -1487,13 +1886,15 @@ IMPORTANT EDITING RULES:
                 'base64'
             );
 
+
         if (
             buffer.length > 1000
         ) {
 
             console.log(
-                `✅ Gemini image edit successful (${buffer.length} bytes)`
+                `✅ Gemini fallback image edit successful (${buffer.length} bytes)`
             );
+
 
             return {
 
@@ -1509,16 +1910,13 @@ IMPORTANT EDITING RULES:
     }
 
 
-    // ========================================================
-    // SEARCH INTERACTION STEPS
-    // ========================================================
-
     const steps =
         Array.isArray(
             data?.steps
         )
             ? data.steps
             : [];
+
 
     for (
         const step
@@ -1531,6 +1929,7 @@ IMPORTANT EDITING RULES:
             )
                 ? step.content
                 : [];
+
 
         for (
             const block
@@ -1548,13 +1947,10 @@ IMPORTANT EDITING RULES:
                         'base64'
                     );
 
+
                 if (
                     buffer.length > 1000
                 ) {
-
-                    console.log(
-                        `✅ Gemini image edit successful from interaction step (${buffer.length} bytes)`
-                    );
 
                     return {
 
@@ -1572,20 +1968,6 @@ IMPORTANT EDITING RULES:
     }
 
 
-    console.error(
-        '❌ Gemini image edit returned no image.'
-    );
-
-    console.error(
-        'Gemini response:',
-        JSON.stringify(
-            data
-        ).slice(
-            0,
-            3000
-        )
-    );
-
     throw new Error(
         'Gemini image editing returned no image.'
     );
@@ -1601,9 +1983,6 @@ async function convertImageToJpeg(
 ) {
 
     try {
-
-        const sharp =
-            require('sharp');
 
         return await sharp(
             imageBuffer
