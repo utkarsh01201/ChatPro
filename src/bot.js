@@ -43,15 +43,18 @@ const bot = new Bot(
 // CONFIG
 // ============================================================
 
-const IMAGE_EXPIRY = 5 * 60 * 1000;
+const IMAGE_EXPIRY =
+    5 * 60 * 1000;
 
-const pendingImages = new Map();
+const pendingImages =
+    new Map();
 
-let cachedVideoFileId = null;
+let cachedVideoFileId =
+    null;
 
 
 // ============================================================
-// TYPING INDICATOR
+// TYPING
 // ============================================================
 
 function startTyping(ctx) {
@@ -92,26 +95,24 @@ const startMessage = `🤖 ChatPro AI
 
 Think. Create. Explore. ⚡
 
-I can help you with:
-
-💬 Normal Chat
+💬 Chat
 Ask anything and have a natural conversation.
 
 💻 Coding
-Programming, debugging, explanations and projects.
+Programming, debugging and project help.
 
 📚 Learning
-Learn difficult topics in simple language.
+Learn difficult topics simply.
 
 🖼️ Image Understanding
-Send an image and ask me about it.
+Send an image and ask questions about it.
 
 🎭 Sticker Understanding
-Send a sticker and I'll analyze it.
+Send a sticker for analysis.
 
 🎨 Image Generation
-Simply ask me to create/generate an image.
-I'll directly generate it using the configured image model.
+Ask me to create, generate, make or draw something.
+I'll directly generate the image.
 
 🖼️ Image Editing
 Reply to a photo with:
@@ -137,10 +138,6 @@ Commands:
 👉 @shiddatXXSociety`;
 
 
-// ============================================================
-// ABOUT
-// ============================================================
-
 const aboutMessage = `🤖 ChatPro AI
 
 Think. Create. Explore. ⚡
@@ -161,7 +158,7 @@ Think. Create. Explore. ⚡
 
 
 // ============================================================
-// MAIN KEYBOARD
+// KEYBOARD
 // ============================================================
 
 function buildStartKeyboard() {
@@ -172,6 +169,7 @@ function buildStartKeyboard() {
             "❓ Help",
             "btn_help"
         )
+
         .text(
             "🆕 New Chat",
             "btn_newchat"
@@ -183,6 +181,7 @@ function buildStartKeyboard() {
             "📜 History",
             "btn_history"
         )
+
         .text(
             "ℹ️ About",
             "btn_about"
@@ -194,6 +193,7 @@ function buildStartKeyboard() {
             "🎨 Image Library",
             "btn_library_0"
         )
+
         .text(
             "🔤 Fonts",
             "btn_fonts_info"
@@ -205,6 +205,7 @@ function buildStartKeyboard() {
             "🖼️ Image Editor",
             "btn_editor_info"
         )
+
         .text(
             "⚡ Tips",
             "btn_tips"
@@ -216,16 +217,13 @@ function buildStartKeyboard() {
             "👨‍💻 Created By",
             "btn_creator"
         )
+
         .url(
             "🌟 Community",
             "https://t.me/shiddatXXSociety"
         );
 }
 
-
-// ============================================================
-// LIBRARY KEYBOARD
-// ============================================================
 
 function buildLibraryKeyboard(
     page,
@@ -255,8 +253,7 @@ function buildLibraryKeyboard(
     }
 
     if (
-        page <
-        totalPages - 1
+        page < totalPages - 1
     ) {
 
         keyboard.text(
@@ -277,7 +274,18 @@ function buildLibraryKeyboard(
 
 
 // ============================================================
-// IMAGE GENERATION DETECTOR
+// IMAGE GENERATION DETECTION
+//
+// IMPORTANT:
+//
+// This is NOT limited to:
+// "generate an image"
+//
+// It also understands:
+// "generate the boy playing football"
+// "create a BMW in a city"
+// "make a realistic tiger"
+// "draw a cartoon cat"
 // ============================================================
 
 function isImageGenerationRequest(text) {
@@ -293,75 +301,234 @@ function isImageGenerationRequest(text) {
     }
 
 
-    const patterns = [
+    // --------------------------------------------------------
+    // Explicit image words
+    // --------------------------------------------------------
 
-        // ====================================================
-        // ENGLISH
-        // ====================================================
-
-        /\b(generate|create|make|draw)\b.*\b(image|picture|photo|art|artwork)\b/i,
-
-        /\b(image|picture|photo|art|artwork)\b.*\b(generate|create|make|draw)\b/i,
-
-        /\b(generate|create|make|draw)\s+(the|an?|a)?\s*(image|picture|photo|art|artwork)\b/i,
-
-        /\b(generate|create|make|draw)\s+me\b/i,
-
-        /\b(i\s+want|i\s+need|i'd\s+like|i\s+would\s+like)\b.*\b(image|picture|photo|art|artwork)\b/i,
-
-        /\b(can\s+you|could\s+you|please)\b.*\b(generate|create|make|draw)\b/i,
-
-        /\b(show|give|send)\s+me\b.*\b(image|picture|photo)\b/i,
-
-        /\b(turn|convert)\b.*\binto\b.*\b(image|picture|photo|art|artwork)\b/i,
+    const explicitImageRequest =
+        /\b(generate|create|make|draw|design|produce)\b[\s\S]*\b(image|picture|photo|art|artwork|illustration|wallpaper|portrait|logo)\b/i
+        .test(message)
+        ||
+        /\b(image|picture|photo|art|artwork|illustration|wallpaper|portrait|logo)\b[\s\S]*\b(generate|create|make|draw|design|produce)\b/i
+        .test(message);
 
 
-        // ====================================================
-        // HINGLISH / HINDI
-        // ====================================================
+    if (explicitImageRequest) {
+        return true;
+    }
 
-        /\b(image|photo|picture)\b.*\b(generate|create|make)\b.*\b(karni|karna|karo|kar\s+do|do|hai)\b/i,
 
-        /\b(image|photo|picture)\b.*\b(generate|create|make)\b.*\b(karo|kar\s+do|do)\b/i,
+    // --------------------------------------------------------
+    // Hinglish / Hindi explicit image request
+    // --------------------------------------------------------
 
-        /\b(generate|create|make)\b.*\b(image|photo|picture)\b.*\b(karo|kar\s+do|do)\b/i,
+    const hindiImageRequest =
+        /\b(image|photo|picture)\b[\s\S]*\b(bana|banao|banado|bana\s+do|generate|create|make)\b/i
+        .test(message)
+        ||
+        /\b(bana|banao|banado|bana\s+do)\b[\s\S]*\b(image|photo|picture)\b/i
+        .test(message);
 
-        /\b(image|photo|picture)\b.*\b(bana|banao|banado|bana\s+do|banana|banani)\b/i,
 
-        /\b(bana|banao|banado|bana\s+do)\b.*\b(image|photo|picture)\b/i,
+    if (hindiImageRequest) {
+        return true;
+    }
 
-        /\bek\s+(image|photo|picture)\b.*\b(generate|create|make|bana|banao|banado)\b/i,
 
-        /\bek\s+(image|photo|picture)\b.*\b(bana|banao|banado|bana\s+do)\b/i,
+    // --------------------------------------------------------
+    // IMPORTANT:
+    //
+    // Detect requests like:
+    //
+    // "GENERATE THE BOY PLAYING FOOTBALL"
+    // "CREATE A BMW IN A CYBERPUNK CITY"
+    // "MAKE A REALISTIC TIGER"
+    //
+    // We look for a generation verb + visual subject.
+    // --------------------------------------------------------
 
-        /\b(mere\s+liye|mere\s+lie)\b.*\b(image|photo|picture)\b.*\b(bana|banao|generate|create|make)\b/i,
+    const generationVerb =
+        /\b(generate|create|make|draw|design|render|paint)\b/i
+            .test(message);
 
-        /\bimage\s+generate\s+karni\s+hai\b/i,
 
-        /\bimage\s+generate\s+karna\s+hai\b/i,
+    if (!generationVerb) {
+        return false;
+    }
 
-        /\bimage\s+generate\s+karo\b/i,
 
-        /\bimage\s+generate\s+kar\s+do\b/i,
+    // --------------------------------------------------------
+    // Visual subjects / scenes
+    // --------------------------------------------------------
 
-        /\bphoto\s+bana\s+do\b/i,
+    const visualWords = [
 
-        /\bphoto\s+banao\b/i,
+        // People
+        'boy',
+        'girl',
+        'man',
+        'woman',
+        'person',
+        'people',
+        'child',
+        'children',
+        'baby',
+        'kid',
+        'model',
+        'character',
+        'soldier',
+        'athlete',
+        'player',
+        'footballer',
+        'cricketer',
+        'superhero',
 
-        /\bphoto\s+banado\b/i,
+        // Animals
+        'dog',
+        'cat',
+        'tiger',
+        'lion',
+        'wolf',
+        'bear',
+        'horse',
+        'elephant',
+        'monkey',
+        'bird',
+        'parrot',
+        'eagle',
+        'snake',
+        'dragon',
+        'rabbit',
+        'deer',
+        'fox',
 
-        /\bimage\s+bana\s+do\b/i,
+        // Vehicles
+        'car',
+        'bike',
+        'motorcycle',
+        'scooter',
+        'bus',
+        'truck',
+        'train',
+        'plane',
+        'airplane',
+        'jet',
+        'helicopter',
+        'ship',
+        'boat',
+        'bmw',
+        'mercedes',
+        'audi',
+        'ferrari',
+        'lamborghini',
+        'tesla',
 
-        /\bimage\s+banao\b/i,
+        // Places / scenes
+        'city',
+        'street',
+        'road',
+        'beach',
+        'mountain',
+        'forest',
+        'jungle',
+        'desert',
+        'park',
+        'garden',
+        'school',
+        'college',
+        'office',
+        'room',
+        'house',
+        'home',
+        'castle',
+        'temple',
+        'church',
+        'mosque',
+        'stadium',
+        'field',
+        'space',
+        'planet',
+        'galaxy',
+        'universe',
 
-        /\bimage\s+banado\b/i
+        // Activities
+        'football',
+        'cricket',
+        'basketball',
+        'tennis',
+        'running',
+        'dancing',
+        'playing',
+        'fighting',
+        'swimming',
+        'walking',
+        'driving',
+        'riding',
+
+        // Visual concepts
+        'sunset',
+        'sunrise',
+        'night',
+        'sky',
+        'ocean',
+        'river',
+        'waterfall',
+        'rain',
+        'snow',
+        'fire',
+        'flower',
+        'tree',
+        'building',
+        'architecture',
+        'portrait',
+        'landscape',
+        'scene',
+        'cinematic',
+        'realistic',
+        'cartoon',
+        'anime',
+        'fantasy',
+        'cyberpunk',
+        'futuristic',
+        '3d',
+        'robot',
+        'robotic',
+        'alien',
+        'character',
+
+        // Common visual creation terms
+        'poster',
+        'banner',
+        'cover',
+        'wallpaper',
+        'thumbnail',
+        'logo',
+        'avatar',
+        'illustration',
+        'art',
+        'artwork'
     ];
 
 
-    return patterns.some(
-        pattern =>
-            pattern.test(message)
-    );
+    const hasVisualSubject =
+        visualWords.some(
+            word =>
+                new RegExp(
+                    `\\b${word}\\b`,
+                    'i'
+                ).test(message)
+        );
+
+
+    if (
+        generationVerb &&
+        hasVisualSubject
+    ) {
+        return true;
+    }
+
+
+    return false;
 }
 
 
@@ -375,34 +542,30 @@ function extractImagePrompt(text) {
         String(text || '').trim();
 
 
-    // --------------------------------------------------------
-    // English
-    // --------------------------------------------------------
+    // Remove common English commands
 
     prompt =
         prompt.replace(
-            /^(please\s+)?(generate|create|make|draw)\s+(the\s+)?(image|picture|photo|art|artwork)\s*(of|showing|with|:)?\s*/i,
+            /^(please\s+)?(generate|create|make|draw|design|render|paint)\s+(the\s+)?(image|picture|photo|art|artwork|illustration|wallpaper|portrait|logo)\s*(of|showing|with|for|:)?\s*/i,
             ''
         );
 
 
     prompt =
         prompt.replace(
-            /^(please\s+)?(generate|create|make|draw)\s+me\s+(an?\s+)?/i,
+            /^(please\s+)?(generate|create|make|draw|design|render|paint)\s+me\s+/i,
             ''
         );
 
 
     prompt =
         prompt.replace(
-            /^(please\s+)?(generate|create|make|draw)\s+/i,
+            /^(please\s+)?(generate|create|make|draw|design|render|paint)\s+/i,
             ''
         );
 
 
-    // --------------------------------------------------------
-    // Hinglish
-    // --------------------------------------------------------
+    // Remove common Hinglish commands
 
     prompt =
         prompt.replace(
@@ -438,15 +601,21 @@ function extractImagePrompt(text) {
         prompt.trim();
 
 
-    return (
-        prompt ||
-        String(text || '').trim()
-    );
+    // If extraction failed, send original request.
+    // Hugging Face can still understand it.
+
+    if (!prompt) {
+        prompt =
+            String(text || '').trim();
+    }
+
+
+    return prompt;
 }
 
 
 // ============================================================
-// IMAGE GENERATION
+// GENERATE AND SEND IMAGE
 // ============================================================
 
 async function generateAndSendImage(
@@ -459,30 +628,30 @@ async function generateAndSendImage(
 
 
     console.log(
-        "========================================"
+        "=========================================="
     );
 
     console.log(
-        "🎨 IMAGE REQUEST DETECTED"
+        "🎨 IMAGE GENERATION REQUEST"
     );
 
     console.log(
-        "📝 Prompt:",
+        "📝 User prompt:",
         prompt
     );
 
     console.log(
-        "🚀 Calling image.js → Hugging Face..."
+        "🚀 CALLING HUGGING FACE..."
     );
 
     console.log(
-        "========================================"
+        "=========================================="
     );
 
 
     const placeholder =
         await ctx.reply(
-            "🎨 Creating your image with AI..."
+            "🎨 Creating your image..."
         );
 
 
@@ -495,7 +664,9 @@ async function generateAndSendImage(
         // ====================================================
         // DIRECT IMAGE GENERATION
         //
-        // image.js calls Hugging Face first.
+        // image.js:
+        // Hugging Face FIRST
+        // Pollinations ONLY as fallback
         // ====================================================
 
         const result =
@@ -510,13 +681,13 @@ async function generateAndSendImage(
         ) {
 
             throw new Error(
-                "Image generator returned no image."
+                "No image buffer returned."
             );
         }
 
 
         console.log(
-            "✅ Image generated successfully."
+            "✅ IMAGE GENERATED"
         );
 
         console.log(
@@ -527,7 +698,7 @@ async function generateAndSendImage(
 
         const cleanPrompt =
             prompt.length > 250
-                ? prompt.slice(0, 247) + "..."
+                ? prompt.slice(0, 247) + '...'
                 : prompt;
 
 
@@ -539,23 +710,23 @@ async function generateAndSendImage(
             await ctx.replyWithPhoto(
                 new InputFile(
                     result.buffer,
-                    "generated.jpg"
+                    'generated.jpg'
                 ),
                 {
                     caption:
-                        `🎨 Generated with ${result.provider || "Hugging Face"}\n\nPrompt: "${cleanPrompt}"\n\n👨‍💻 by @Utkarsh12011`
+                        `🎨 Generated with ${result.provider || 'Hugging Face'}\n\nPrompt: "${cleanPrompt}"\n\n👨‍💻 @Utkarsh12011`
                 }
             );
 
 
         // ====================================================
-        // SAVE TO IMAGE LIBRARY
+        // SAVE IMAGE
         // ====================================================
 
         const fileId =
             sent.photo?.[
                 sent.photo.length - 1
-            ]?.file_id || "";
+            ]?.file_id || '';
 
 
         if (fileId) {
@@ -571,16 +742,14 @@ async function generateAndSendImage(
             } catch (error) {
 
                 console.error(
-                    "Image library save failed:",
+                    "Image library save error:",
                     error.message
                 );
             }
         }
 
 
-        // ====================================================
-        // DELETE LOADING MESSAGE
-        // ====================================================
+        // Remove loading message
 
         await ctx.api
             .deleteMessage(
@@ -593,8 +762,8 @@ async function generateAndSendImage(
     } catch (error) {
 
         console.error(
-            "❌ IMAGE GENERATION ERROR:",
-            error
+            "❌ HUGGING FACE / IMAGE GENERATION ERROR:",
+            error.message
         );
 
 
@@ -602,7 +771,7 @@ async function generateAndSendImage(
             .editMessageText(
                 ctx.chat.id,
                 placeholder.message_id,
-                "❌ Image generation failed. Please try again."
+                "❌ I couldn't generate the image right now. Please try again."
             )
             .catch(() => {});
 
@@ -615,11 +784,14 @@ async function generateAndSendImage(
 
 
 // ============================================================
-// /START / HELP
+// START / HELP
 // ============================================================
 
 bot.command(
-    ['start', 'help'],
+    [
+        'start',
+        'help'
+    ],
     async (ctx) => {
 
         const keyboard =
@@ -672,15 +844,10 @@ bot.command(
                 sent.video.file_id;
 
 
-            console.log(
-                "✅ Start video cached."
-            );
-
-
         } catch (error) {
 
             console.error(
-                "Start video error:",
+                "Start error:",
                 error.message
             );
 
@@ -698,11 +865,14 @@ bot.command(
 
 
 // ============================================================
-// /NEWCHAT / CLEAR
+// NEW CHAT / CLEAR
 // ============================================================
 
 bot.command(
-    ['newchat', 'clear'],
+    [
+        'newchat',
+        'clear'
+    ],
     async (ctx) => {
 
         const chatId =
@@ -718,7 +888,7 @@ bot.command(
         } catch (error) {
 
             console.error(
-                "Clear history error:",
+                "Clear error:",
                 error.message
             );
         }
@@ -737,7 +907,7 @@ bot.command(
 
 
 // ============================================================
-// /ABOUT
+// ABOUT
 // ============================================================
 
 bot.command(
@@ -766,7 +936,7 @@ bot.command(
         if (!prompt) {
 
             await ctx.reply(
-                "🎨 Give me an image prompt.\n\nExample:\n/imagine a futuristic BMW in a cyberpunk city at night"
+                "🎨 Example:\n/imagine a futuristic city at night"
             );
 
             return;
@@ -782,11 +952,14 @@ bot.command(
 
 
 // ============================================================
-// /FONT
+// FONT
 // ============================================================
 
 bot.command(
-    ['font', 'fonts'],
+    [
+        'font',
+        'fonts'
+    ],
     async (ctx) => {
 
         const text =
@@ -796,7 +969,7 @@ bot.command(
         if (!text) {
 
             await ctx.reply(
-                "🔤 Font Generator\n\nUsage:\n/font Your Text\n\nExample:\n/font Utkarsh"
+                "🔤 Usage:\n/font Your Text"
             );
 
             return;
@@ -824,7 +997,7 @@ bot.command(
             `🔤 *Stylized Fonts for:* "${text}"\n\n${formatted}`,
             {
                 parse_mode:
-                    "Markdown"
+                    'Markdown'
             }
         );
     }
@@ -832,7 +1005,7 @@ bot.command(
 
 
 // ============================================================
-// DOWNLOAD TELEGRAM PHOTO
+// TELEGRAM PHOTO DOWNLOAD
 // ============================================================
 
 async function downloadTelegramPhoto(
@@ -855,7 +1028,7 @@ async function downloadTelegramPhoto(
     if (!file.file_path) {
 
         throw new Error(
-            "Telegram did not return photo path."
+            'Telegram photo path unavailable.'
         );
     }
 
@@ -873,7 +1046,7 @@ async function downloadTelegramPhoto(
     if (!response.ok) {
 
         throw new Error(
-            "Could not download Telegram photo."
+            'Failed to download Telegram photo.'
         );
     }
 
@@ -892,7 +1065,7 @@ async function downloadTelegramPhoto(
 
 
 // ============================================================
-// DOWNLOAD TELEGRAM FILE
+// TELEGRAM FILE DOWNLOAD
 // ============================================================
 
 async function downloadTelegramFile(
@@ -909,7 +1082,7 @@ async function downloadTelegramFile(
     if (!file.file_path) {
 
         throw new Error(
-            "Telegram did not return file path."
+            'Telegram file path unavailable.'
         );
     }
 
@@ -927,7 +1100,7 @@ async function downloadTelegramFile(
     if (!response.ok) {
 
         throw new Error(
-            "Could not download Telegram file."
+            'Failed to download Telegram file.'
         );
     }
 
@@ -939,7 +1112,7 @@ async function downloadTelegramFile(
 
 
 // ============================================================
-// /TEXT IMAGE EDITOR
+// IMAGE EDITOR
 // ============================================================
 
 bot.command(
@@ -964,7 +1137,7 @@ bot.command(
         if (!replyPhoto) {
 
             await ctx.reply(
-                "🖼️ Reply to a photo with:\n\n/text Your Text\n\nExample:\n/text Utkarsh"
+                "🖼️ Reply to a photo with:\n/text Your Text"
             );
 
             return;
@@ -974,13 +1147,13 @@ bot.command(
         if (!textToOverlay) {
 
             textToOverlay =
-                "Utkarsh";
+                'Utkarsh';
         }
 
 
         const placeholder =
             await ctx.reply(
-                "✍️ Adding text to your image..."
+                '✍️ Adding text to your image...'
             );
 
 
@@ -1009,11 +1182,11 @@ bot.command(
             await ctx.replyWithPhoto(
                 new InputFile(
                     editedBuffer,
-                    "edited.jpg"
+                    'edited.jpg'
                 ),
                 {
                     caption:
-                        `✨ Added "${textToOverlay}"\n\n👨‍💻 by @Utkarsh12011`
+                        `✨ Added "${textToOverlay}"\n\n👨‍💻 @Utkarsh12011`
                 }
             );
 
@@ -1029,7 +1202,7 @@ bot.command(
         } catch (error) {
 
             console.error(
-                "Image edit error:",
+                'Image editor error:',
                 error.message
             );
 
@@ -1038,7 +1211,7 @@ bot.command(
                 .editMessageText(
                     ctx.chat.id,
                     placeholder.message_id,
-                    "❌ I couldn't edit the image."
+                    "❌ Couldn't edit the image."
                 )
                 .catch(() => {});
 
@@ -1080,8 +1253,6 @@ bot.on(
                 );
 
 
-            // Save image temporarily
-
             pendingImages.set(
                 chatId,
                 {
@@ -1093,23 +1264,23 @@ bot.on(
             );
 
 
-            // =================================================
+            // ------------------------------------------------
             // PHOTO WITHOUT CAPTION
-            // =================================================
+            // ------------------------------------------------
 
             if (!caption) {
 
                 await ctx.reply(
-                    "🖼️ Got the image!\n\nAsk me something about it:\n\n• What is this?\n• Describe this image\n• What objects are visible?\n• Read the text\n• Explain this screenshot"
+                    "🖼️ Got the image!\n\nAsk me something about it."
                 );
 
                 return;
             }
 
 
-            // =================================================
-            // PHOTO + /TEXT
-            // =================================================
+            // ------------------------------------------------
+            // PHOTO + TEXT EDIT
+            // ------------------------------------------------
 
             const editCommand =
                 caption.match(
@@ -1121,12 +1292,12 @@ bot.on(
 
                 const textToOverlay =
                     editCommand[1]?.trim() ||
-                    "Utkarsh";
+                    'Utkarsh';
 
 
                 const placeholder =
                     await ctx.reply(
-                        `✍️ Adding "${textToOverlay}" to your image...`
+                        `✍️ Adding "${textToOverlay}"...`
                     );
 
 
@@ -1146,11 +1317,11 @@ bot.on(
                     await ctx.replyWithPhoto(
                         new InputFile(
                             editedBuffer,
-                            "edited.jpg"
+                            'edited.jpg'
                         ),
                         {
                             caption:
-                                `✨ Added "${textToOverlay}"\n\n👨‍💻 by @Utkarsh12011`
+                                `✨ Added "${textToOverlay}"\n\n👨‍💻 @Utkarsh12011`
                         }
                     );
 
@@ -1166,7 +1337,7 @@ bot.on(
                 } catch (error) {
 
                     console.error(
-                        "Photo edit error:",
+                        'Photo edit error:',
                         error.message
                     );
 
@@ -1190,13 +1361,13 @@ bot.on(
             }
 
 
-            // =================================================
+            // ------------------------------------------------
             // PHOTO + QUESTION
-            // =================================================
+            // ------------------------------------------------
 
             const placeholder =
                 await ctx.reply(
-                    "🖼️ Analyzing your image..."
+                    '🖼️ Analyzing your image...'
                 );
 
 
@@ -1233,7 +1404,7 @@ bot.on(
             } catch (error) {
 
                 console.error(
-                    "Photo analysis error:",
+                    'Photo analysis error:',
                     error.message
                 );
 
@@ -1242,7 +1413,7 @@ bot.on(
                     .editMessageText(
                         ctx.chat.id,
                         placeholder.message_id,
-                        "❌ I couldn't analyze that image right now."
+                        "❌ I couldn't analyze that image."
                     )
                     .catch(() => {});
 
@@ -1256,7 +1427,7 @@ bot.on(
         } catch (error) {
 
             console.error(
-                "Photo handler error:",
+                'Photo handler error:',
                 error.message
             );
 
@@ -1283,7 +1454,7 @@ bot.on(
 
         const placeholder =
             await ctx.reply(
-                "🎭 Analyzing sticker..."
+                '🎭 Analyzing sticker...'
             );
 
 
@@ -1320,7 +1491,7 @@ bot.on(
                 } catch (error) {
 
                     console.log(
-                        "Sticker thumbnail failed:",
+                        'Sticker thumbnail failed:',
                         error.message
                     );
                 }
@@ -1352,7 +1523,7 @@ bot.on(
                 } catch (error) {
 
                     console.log(
-                        "Sticker file failed:",
+                        'Sticker file failed:',
                         error.message
                     );
                 }
@@ -1362,35 +1533,27 @@ bot.on(
             if (!buffer) {
 
                 throw new Error(
-                    "No sticker preview available."
+                    'No sticker preview.'
                 );
             }
-
-
-            const prompt = `
-Analyze this Telegram sticker.
-
-Explain:
-
-🎭 What is shown
-🙂 Emotion/expression
-💭 What it communicates
-💬 When it would be used
-🎨 Important visual details
-
-If text is visible, read it.
-
-Do not invent details.
-
-Keep the answer concise.
-`;
 
 
             const answer =
                 await analyzeImage(
                     buffer,
                     'image/png',
-                    prompt
+                    `
+Analyze this Telegram sticker.
+
+Explain what is shown, its emotion,
+what it communicates and when someone
+would naturally use it.
+
+If text is visible, read it.
+
+Do not invent details.
+Keep the answer concise.
+`
                 );
 
 
@@ -1413,7 +1576,7 @@ Keep the answer concise.
         } catch (error) {
 
             console.error(
-                "Sticker analysis error:",
+                'Sticker analysis error:',
                 error.message
             );
 
@@ -1452,8 +1615,6 @@ bot.on(
         }
 
 
-        // Commands handled by bot.command()
-
         if (
             userMessage.startsWith('/')
         ) {
@@ -1470,8 +1631,7 @@ bot.on(
 
 
         // ====================================================
-        // PRIORITY 1
-        // REPLY TO PHOTO
+        // 1. REPLY TO PHOTO
         // ====================================================
 
         if (
@@ -1480,7 +1640,7 @@ bot.on(
 
             const placeholder =
                 await ctx.reply(
-                    "🖼️ Analyzing the image you replied to..."
+                    '🖼️ Analyzing the image you replied to...'
                 );
 
 
@@ -1527,7 +1687,7 @@ bot.on(
             } catch (error) {
 
                 console.error(
-                    "Reply image error:",
+                    'Reply image error:',
                     error.message
                 );
 
@@ -1536,7 +1696,7 @@ bot.on(
                     .editMessageText(
                         ctx.chat.id,
                         placeholder.message_id,
-                        "❌ I couldn't analyze the image you replied to."
+                        "❌ I couldn't analyze that image."
                     )
                     .catch(() => {});
 
@@ -1552,11 +1712,11 @@ bot.on(
 
 
         // ====================================================
-        // PRIORITY 2
+        // 2. IMAGE GENERATION
         //
-        // IMAGE GENERATION
+        // THIS IS THE IMPORTANT PART.
         //
-        // THIS MUST COME BEFORE NORMAL AI.
+        // It runs BEFORE generateAIResponse().
         // ====================================================
 
         if (
@@ -1566,11 +1726,12 @@ bot.on(
         ) {
 
             console.log(
-                "🎨🎨🎨 IMAGE REQUEST DETECTED 🎨🎨🎨"
+                '🎨 IMAGE REQUEST DETECTED'
             );
 
+
             console.log(
-                "User request:",
+                '👤 Request:',
                 userMessage
             );
 
@@ -1582,13 +1743,12 @@ bot.on(
 
 
             console.log(
-                "Image prompt:",
+                '📝 Image prompt:',
                 prompt
             );
 
 
-            // DIRECTLY CALL HUGGING FACE
-            // THROUGH image.js
+            // DIRECTLY CALL IMAGE GENERATOR
 
             await generateAndSendImage(
                 ctx,
@@ -1596,15 +1756,14 @@ bot.on(
             );
 
 
-            // DO NOT FALL THROUGH TO AI
+            // NEVER CONTINUE TO NORMAL AI
 
             return;
         }
 
 
         // ====================================================
-        // PRIORITY 3
-        // PENDING IMAGE
+        // 3. PENDING IMAGE QUESTION
         // ====================================================
 
         const pending =
@@ -1631,7 +1790,7 @@ bot.on(
 
                 const placeholder =
                     await ctx.reply(
-                        "🖼️ Analyzing your image..."
+                        '🖼️ Analyzing your image...'
                     );
 
 
@@ -1668,7 +1827,7 @@ bot.on(
                 } catch (error) {
 
                     console.error(
-                        "Pending image error:",
+                        'Pending image error:',
                         error.message
                     );
 
@@ -1699,8 +1858,7 @@ bot.on(
 
 
         // ====================================================
-        // PRIORITY 4
-        // NORMAL TEXT CHAT
+        // 4. NORMAL TEXT AI
         // ====================================================
 
         const stopTyping =
@@ -1735,17 +1893,13 @@ bot.on(
                     );
 
 
-            // =================================================
-            // REPLY CONTEXT
-            //
-            // Works when replying to:
-            // - your own text
-            // - bot's text
-            // =================================================
-
             let messageForAI =
                 userMessage;
 
+
+            // =================================================
+            // REPLY CONTEXT
+            // =================================================
 
             if (repliedMessage) {
 
@@ -1779,14 +1933,10 @@ The user's new message is:
 
 ${userMessage}
 
-Answer the user's new message naturally and use the previous message as context when relevant.`;
+Answer the new message naturally using the previous message as context when relevant.`;
                 }
             }
 
-
-            // =================================================
-            // NORMAL AI
-            // =================================================
 
             const answer =
                 await generateAIResponse(
@@ -1795,10 +1945,6 @@ Answer the user's new message naturally and use the previous message as context 
                     profile
                 );
 
-
-            // =================================================
-            // SAVE CHAT
-            // =================================================
 
             await db.addMessages(
                 chatId,
@@ -1822,10 +1968,6 @@ Answer the user's new message naturally and use the previous message as context 
             );
 
 
-            // =================================================
-            // SEND ANSWER
-            // =================================================
-
             await ctx.reply(
                 answer
             );
@@ -1834,7 +1976,7 @@ Answer the user's new message naturally and use the previous message as context 
         } catch (error) {
 
             console.error(
-                "Normal text error:",
+                'Normal AI error:',
                 error.message
             );
 
@@ -1853,15 +1995,14 @@ Answer the user's new message naturally and use the previous message as context 
 
 
 // ============================================================
-// CALLBACK: HELP
+// CALLBACKS
 // ============================================================
 
 bot.callbackQuery(
-    "btn_help",
+    'btn_help',
     async (ctx) => {
 
         await ctx.answerCallbackQuery();
-
 
         await ctx.reply(
             startMessage,
@@ -1874,12 +2015,8 @@ bot.callbackQuery(
 );
 
 
-// ============================================================
-// CALLBACK: NEW CHAT
-// ============================================================
-
 bot.callbackQuery(
-    "btn_newchat",
+    'btn_newchat',
     async (ctx) => {
 
         const chatId =
@@ -1895,7 +2032,7 @@ bot.callbackQuery(
         } catch (error) {
 
             console.error(
-                "New chat error:",
+                'New chat error:',
                 error.message
             );
         }
@@ -1907,23 +2044,19 @@ bot.callbackQuery(
 
 
         await ctx.answerCallbackQuery(
-            "Chat cleared!"
+            'Chat cleared!'
         );
 
 
         await ctx.reply(
-            "🧹 Fresh start! Your conversation history has been cleared."
+            '🧹 Fresh start! Your conversation history has been cleared.'
         );
     }
 );
 
 
-// ============================================================
-// CALLBACK: HISTORY
-// ============================================================
-
 bot.callbackQuery(
-    "btn_history",
+    'btn_history',
     async (ctx) => {
 
         await ctx.answerCallbackQuery();
@@ -1947,7 +2080,7 @@ bot.callbackQuery(
             ) {
 
                 await ctx.reply(
-                    "📜 No conversation history yet."
+                    '📜 No conversation history yet.'
                 );
 
                 return;
@@ -1964,9 +2097,7 @@ bot.callbackQuery(
                         message =>
                             `${message.role === 'user' ? '👤 You' : '🤖 AI'}: ${message.text.slice(0, 100)}${message.text.length > 100 ? '...' : ''}`
                     )
-                    .join(
-                        '\n'
-                    );
+                    .join('\n');
 
 
             await ctx.reply(
@@ -1981,29 +2112,24 @@ bot.callbackQuery(
         } catch (error) {
 
             console.error(
-                "History error:",
+                'History error:',
                 error.message
             );
 
 
             await ctx.reply(
-                "❌ Couldn't load conversation history."
+                "❌ Couldn't load history."
             );
         }
     }
 );
 
 
-// ============================================================
-// CALLBACK: ABOUT
-// ============================================================
-
 bot.callbackQuery(
-    "btn_about",
+    'btn_about',
     async (ctx) => {
 
         await ctx.answerCallbackQuery();
-
 
         await ctx.reply(
             aboutMessage
@@ -2011,10 +2137,6 @@ bot.callbackQuery(
     }
 );
 
-
-// ============================================================
-// CALLBACK: IMAGE LIBRARY
-// ============================================================
 
 bot.callbackQuery(
     /^btn_library_(\d+)$/,
@@ -2052,7 +2174,7 @@ bot.callbackQuery(
             ) {
 
                 await ctx.reply(
-                    "🎨 Your image library is empty.\n\nUse /imagine to create your first AI image!"
+                    '🎨 Your image library is empty.'
                 );
 
                 return;
@@ -2088,25 +2210,21 @@ bot.callbackQuery(
         } catch (error) {
 
             console.error(
-                "Library error:",
+                'Library error:',
                 error.message
             );
 
 
             await ctx.reply(
-                "❌ Couldn't load your image library."
+                "❌ Couldn't load image library."
             );
         }
     }
 );
 
 
-// ============================================================
-// CALLBACK: NO OP
-// ============================================================
-
 bot.callbackQuery(
-    "btn_noop",
+    'btn_noop',
     async (ctx) => {
 
         await ctx.answerCallbackQuery();
@@ -2114,12 +2232,8 @@ bot.callbackQuery(
 );
 
 
-// ============================================================
-// CALLBACK: BACK MENU
-// ============================================================
-
 bot.callbackQuery(
-    "btn_backmenu",
+    'btn_backmenu',
     async (ctx) => {
 
         await ctx.answerCallbackQuery();
@@ -2136,87 +2250,82 @@ bot.callbackQuery(
 );
 
 
-// ============================================================
-// CALLBACK: FONTS
-// ============================================================
-
 bot.callbackQuery(
-    "btn_fonts_info",
+    'btn_fonts_info',
     async (ctx) => {
 
         await ctx.answerCallbackQuery();
 
 
         await ctx.reply(
-            "🔤 Font Generator\n\nUse:\n/font Your Text\n\nExample:\n/font Utkarsh"
+            '🔤 Use:\n/font Your Text'
         );
     }
 );
 
 
-// ============================================================
-// CALLBACK: IMAGE EDITOR
-// ============================================================
-
 bot.callbackQuery(
-    "btn_editor_info",
+    'btn_editor_info',
     async (ctx) => {
 
         await ctx.answerCallbackQuery();
 
 
         await ctx.reply(
-            "🖼️ Image Editor\n\nReply to a photo with:\n/text Your Text"
+            '🖼️ Reply to a photo with:\n/text Your Text'
         );
     }
 );
 
 
-// ============================================================
-// CALLBACK: TIPS
-// ============================================================
-
 bot.callbackQuery(
-    "btn_tips",
+    'btn_tips',
     async (ctx) => {
 
         await ctx.answerCallbackQuery();
 
 
         await ctx.reply(
-            "⚡ ChatPro Tips\n\n• Ask normal questions\n• Reply to your own messages\n• Reply to bot messages\n• Send a photo and ask questions\n• Reply to a photo with a question\n• Send stickers for analysis\n• Ask naturally to generate an image\n• Use /imagine for direct image generation\n• Use /font for stylish text\n• Use /text for image editing"
+            `⚡ ChatPro Tips
+
+• Ask normal questions
+• Reply to your own messages
+• Reply to bot messages
+• Send photos for analysis
+• Reply to photos with questions
+• Send stickers for analysis
+• Ask to generate/create/make/draw visual content
+• Use /imagine for direct image generation
+• Use /font for fonts
+• Use /text for image editing`
         );
     }
 );
 
 
-// ============================================================
-// CALLBACK: CREATOR
-// ============================================================
-
 bot.callbackQuery(
-    "btn_creator",
+    'btn_creator',
     async (ctx) => {
 
         await ctx.answerCallbackQuery();
 
 
         await ctx.reply(
-            "👨‍💻 Created by @Utkarsh12011\n\n🤖 ChatPro AI\n⚡ Think. Create. Explore."
+            '👨‍💻 Created by @Utkarsh12011\n\n🤖 ChatPro AI'
         );
     }
 );
 
 
 // ============================================================
-// BOT ERROR HANDLER
+// ERROR HANDLER
 // ============================================================
 
 bot.catch(
     (error) => {
 
         console.error(
-            "❌ Bot error:",
+            '❌ Bot error:',
             error.error
         );
     }
@@ -2276,10 +2385,6 @@ const server =
     );
 
 
-// ============================================================
-// START SERVER
-// ============================================================
-
 server.listen(
     PORT,
     '0.0.0.0',
@@ -2306,7 +2411,7 @@ bot.start(
         () => {
 
             console.log(
-                "🤖 ChatPro AI bot started successfully!"
+                '🤖 ChatPro AI bot started successfully!'
             );
         }
     )
@@ -2314,7 +2419,7 @@ bot.start(
         (error) => {
 
             console.error(
-                "❌ Failed to start bot:",
+                '❌ Failed to start bot:',
                 error
             );
 
@@ -2324,7 +2429,7 @@ bot.start(
 
 
 // ============================================================
-// GRACEFUL SHUTDOWN
+// SHUTDOWN
 // ============================================================
 
 process.once(
