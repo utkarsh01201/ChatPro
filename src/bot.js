@@ -119,7 +119,7 @@ Discuss ideas, solve problems and discover new possibilities.
 Send me a photo and ask questions about it.
 
 🎭 Sticker Understanding
-Send me a sticker and I'll study what's in it.
+Send me a sticker and I'll study its character, emotion, design and meaning.
 
 🎨 Image Generation
 Use /imagine [prompt] to generate AI images.
@@ -554,58 +554,31 @@ async function downloadTelegramPhoto(
 
 
 // ============================================================
-// STICKER DOWNLOAD + CONVERSION
+// DOWNLOAD TELEGRAM FILE
 // ============================================================
 
-async function downloadTelegramSticker(
+async function downloadTelegramFile(
     ctx,
-    sticker
+    fileId
 ) {
-
-    if (!sticker) {
-
-        throw new Error(
-            "No sticker received."
-        );
-
-    }
-
-
-    // Static stickers are normally WEBP.
-    // Animated/video stickers need a different decoder.
-    if (
-        sticker.is_animated ||
-        sticker.is_video
-    ) {
-
-        throw new Error(
-            "Animated or video stickers are not supported yet. Please send a static sticker."
-        );
-
-    }
-
 
     const file =
         await ctx.api.getFile(
-            sticker.file_id
+            fileId
         );
 
 
-    const filePath =
-        file.file_path;
-
-
-    if (!filePath) {
+    if (!file.file_path) {
 
         throw new Error(
-            "Telegram did not return a sticker file path."
+            "Telegram did not return a file path."
         );
 
     }
 
 
     const url =
-        `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${filePath}`;
+        `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
 
 
     const response =
@@ -615,33 +588,237 @@ async function downloadTelegramSticker(
     if (!response.ok) {
 
         throw new Error(
-            "Could not download sticker from Telegram."
+            "Could not download Telegram file."
         );
 
     }
 
 
-    const stickerBuffer =
-        Buffer.from(
-            await response.arrayBuffer()
-        );
+    return Buffer.from(
+        await response.arrayBuffer()
+    );
+}
 
 
-    // Convert WEBP → PNG.
-    // Gemini/OpenRouter vision receives the
-    // converted PNG reliably.
-    const pngBuffer =
-        await sharp(
-            stickerBuffer
-        )
-            .png()
-            .toBuffer();
+// ============================================================
+// GET STICKER PREVIEW
+// ============================================================
+
+async function getStickerPreview(
+    ctx,
+    sticker
+) {
+
+    // ========================================================
+    // 1. DIRECT STICKER THUMBNAIL
+    // ========================================================
+
+    if (sticker.thumbnail?.file_id) {
+
+        try {
+
+            console.log(
+                "🎭 Using Telegram sticker thumbnail."
+            );
 
 
-    return {
-        buffer: pngBuffer,
-        mimeType: 'image/png'
-    };
+            const thumbnailBuffer =
+                await downloadTelegramFile(
+                    ctx,
+                    sticker.thumbnail.file_id
+                );
+
+
+            const pngBuffer =
+                await sharp(
+                    thumbnailBuffer
+                )
+                    .png()
+                    .toBuffer();
+
+
+            return {
+                buffer: pngBuffer,
+                mimeType: 'image/png',
+                sourceType:
+                    sticker.is_animated
+                        ? 'animated-preview'
+                        : sticker.is_video
+                            ? 'video-preview'
+                            : 'static'
+            };
+
+        } catch (error) {
+
+            console.log(
+                "⚠️ Direct sticker thumbnail failed:",
+                error.message
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // 2. STICKER SET FALLBACK
+    // ========================================================
+
+    if (sticker.set_name) {
+
+        try {
+
+            console.log(
+                `🎭 Trying sticker set preview: ${sticker.set_name}`
+            );
+
+
+            const stickerSet =
+                await ctx.api.getStickerSet(
+                    sticker.set_name
+                );
+
+
+            // ------------------------------------------------
+            // Try to find the exact sticker again
+            // ------------------------------------------------
+
+            const matchingSticker =
+                stickerSet.stickers?.find(
+                    item =>
+                        item.file_unique_id ===
+                        sticker.file_unique_id
+                );
+
+
+            if (
+                matchingSticker?.thumbnail?.file_id
+            ) {
+
+                const thumbnailBuffer =
+                    await downloadTelegramFile(
+                        ctx,
+                        matchingSticker.thumbnail.file_id
+                    );
+
+
+                const pngBuffer =
+                    await sharp(
+                        thumbnailBuffer
+                    )
+                        .png()
+                        .toBuffer();
+
+
+                return {
+                    buffer: pngBuffer,
+                    mimeType: 'image/png',
+                    sourceType:
+                        sticker.is_animated
+                            ? 'animated-preview'
+                            : sticker.is_video
+                                ? 'video-preview'
+                                : 'static'
+                };
+
+            }
+
+
+            // ------------------------------------------------
+            // Try sticker-set thumbnail
+            // ------------------------------------------------
+
+            if (
+                stickerSet.thumbnail?.file_id
+            ) {
+
+                const thumbnailBuffer =
+                    await downloadTelegramFile(
+                        ctx,
+                        stickerSet.thumbnail.file_id
+                    );
+
+
+                const pngBuffer =
+                    await sharp(
+                        thumbnailBuffer
+                    )
+                        .png()
+                        .toBuffer();
+
+
+                return {
+                    buffer: pngBuffer,
+                    mimeType: 'image/png',
+                    sourceType:
+                        'sticker-set-preview'
+                };
+
+            }
+
+        } catch (error) {
+
+            console.log(
+                "⚠️ Sticker set preview unavailable:",
+                error.message
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // 3. STATIC STICKER DIRECT FILE
+    // ========================================================
+
+    if (
+        !sticker.is_animated &&
+        !sticker.is_video
+    ) {
+
+        try {
+
+            const stickerBuffer =
+                await downloadTelegramFile(
+                    ctx,
+                    sticker.file_id
+                );
+
+
+            const pngBuffer =
+                await sharp(
+                    stickerBuffer
+                )
+                    .png()
+                    .toBuffer();
+
+
+            return {
+                buffer: pngBuffer,
+                mimeType: 'image/png',
+                sourceType: 'static'
+            };
+
+        } catch (error) {
+
+            console.log(
+                "⚠️ Static sticker conversion failed:",
+                error.message
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // NO PREVIEW
+    // ========================================================
+
+    throw new Error(
+        "Telegram did not provide an accessible preview for this sticker."
+    );
 }
 
 
@@ -659,7 +836,11 @@ bot.on(
 
         const placeholder =
             await ctx.reply(
-                "🎭 Studying your sticker..."
+                sticker.is_animated
+                    ? "🎭 Studying your animated sticker..."
+                    : sticker.is_video
+                        ? "🎭 Studying your video sticker..."
+                        : "🎭 Studying your sticker..."
             );
 
 
@@ -671,34 +852,85 @@ bot.on(
 
             const {
                 buffer,
-                mimeType
+                mimeType,
+                sourceType
             } =
-                await downloadTelegramSticker(
+                await getStickerPreview(
                     ctx,
                     sticker
                 );
 
 
+            const stickerType =
+                sticker.is_animated
+                    ? "animated TGS sticker"
+                    : sticker.is_video
+                        ? "video WEBM sticker"
+                        : "static sticker";
+
+
             const stickerPrompt = `
-Study this Telegram sticker carefully.
+You are ChatPro AI's sticker understanding system.
 
-Tell the user what you can understand from the sticker.
+Study this Telegram ${stickerType} carefully.
 
-Consider:
-• What character, person, animal or object is shown
-• Facial expression and emotion
-• Pose or action
-• Clothing or visual details
-• Any visible text
-• The overall mood or message
-• What the sticker might commonly communicate in a chat
+IMPORTANT:
+You are looking at the visual preview available from Telegram.
 
-Be natural and slightly expressive, like a friend explaining the sticker.
+Do not invent animation or movement that is not visible in
+the provided image.
 
-Do not invent details that are not visible.
-If something is uncertain, clearly say so.
+Analyze the sticker like a human who understands internet
+and chat culture.
 
-Keep the response concise but interesting.
+Cover the useful details naturally:
+
+🎭 What is shown
+Explain the main character, person, animal, object or scene.
+
+🙂 Expression
+Explain the visible facial expression and emotion.
+
+💭 Meaning
+Explain what emotion, reaction or message the sticker
+appears to communicate.
+
+💬 Chat usage
+Explain when someone might naturally use this sticker.
+
+🎨 Visual details
+Mention interesting colors, pose, clothing, objects,
+style, text, symbols or other visible details.
+
+If the sticker contains visible text, read it when possible.
+
+If something is uncertain, say so instead of inventing it.
+
+Make the answer:
+• Natural
+• Interesting
+• Slightly entertaining
+• Professional
+• Concise but informative
+
+Do not produce a giant report.
+
+Use a short opening paragraph followed by useful sections
+only where they improve readability.
+
+Do not use Markdown headings.
+
+Do not use:
+
+#
+##
+###
+**bold**
+*italic*
+---
+> blockquotes
+
+Use simple Telegram-friendly formatting.
 `;
 
 
@@ -710,17 +942,27 @@ Keep the response concise but interesting.
                 );
 
 
+            const previewLabel =
+                sourceType === 'animated-preview'
+                    ? "🎞️ Animated sticker preview"
+                    : sourceType === 'video-preview'
+                        ? "🎬 Video sticker preview"
+                        : sourceType === 'sticker-set-preview'
+                            ? "🖼️ Sticker-set preview"
+                            : "🖼️ Sticker";
+
+
             await ctx.api
                 .editMessageText(
                     ctx.chat.id,
                     placeholder.message_id,
-                    `🎭 Sticker Study\n\n${answer}`
+                    `🎭 Sticker Study\n${previewLabel}\n\n${answer}`
                 )
                 .catch(
                     async () => {
 
                         await ctx.reply(
-                            `🎭 Sticker Study\n\n${answer}`
+                            `🎭 Sticker Study\n${previewLabel}\n\n${answer}`
                         );
 
                     }
@@ -735,11 +977,19 @@ Keep the response concise but interesting.
             );
 
 
+            const stickerType =
+                sticker.is_animated
+                    ? "animated"
+                    : sticker.is_video
+                        ? "video"
+                        : "static";
+
+
             await ctx.api
                 .editMessageText(
                     ctx.chat.id,
                     placeholder.message_id,
-                    "🎭 I can study static stickers right now, but this sticker appears to be animated/video. Please send a static sticker and I'll analyze it."
+                    `🎭 I received your ${stickerType} sticker, but Telegram didn't provide an accessible preview for this particular sticker.\n\nTry sending another sticker from the same pack and I'll study it.`
                 )
                 .catch(() => {});
 
@@ -1389,7 +1639,7 @@ bot.callbackQuery(
         await ctx.answerCallbackQuery();
 
         await ctx.reply(
-            "⚡ ChatPro Tips\n\n• Ask follow-up questions naturally\n• Send a photo and ask what is in it\n• Send a sticker and I'll study it\n• Use /imagine for AI images\n• Use /font for stylish text\n• Use /text to edit photos\n• Use /newchat for a fresh conversation"
+            "⚡ ChatPro Tips\n\n• Ask follow-up questions naturally\n• Send a photo and ask what is in it\n• Send a static, animated or video sticker and I'll study its available preview\n• Use /imagine for AI images\n• Use /font for stylish text\n• Use /text to edit photos\n• Use /newchat for a fresh conversation"
         );
 
     }
