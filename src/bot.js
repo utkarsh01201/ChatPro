@@ -42,14 +42,6 @@ const bot = new Bot(
 // PENDING IMAGES
 // ============================================================
 
-// Stores the latest image for each chat.
-// This allows:
-//
-// User: [photo]
-// User: What is this?
-//
-// The bot understands that the question refers to the photo.
-
 const pendingImages = new Map();
 
 const IMAGE_EXPIRY =
@@ -122,7 +114,7 @@ Your AI. Your space. Your possibilities.
 
 
 // ============================================================
-// KEYBOARD
+// KEYBOARDS
 // ============================================================
 
 function buildStartKeyboard() {
@@ -354,7 +346,9 @@ bot.command(
                 buffer,
                 provider
             } =
-                await generateImage(prompt);
+                await generateImage(
+                    prompt
+                );
 
             const cleanPrompt =
                 prompt.length > 200
@@ -447,13 +441,10 @@ bot.command(
                 .join('\n\n');
 
         await ctx.reply(
-
             `🔤 *Stylized Fonts for:* "${text}"\n\n💡 _Tap any text to copy directly:_\n\n${formatted}`,
-
             {
                 parse_mode: "Markdown"
             }
-
         );
 
     }
@@ -561,17 +552,14 @@ bot.command(
                 );
 
             await ctx.replyWithPhoto(
-
                 new InputFile(
                     editedBuffer,
                     'edited.jpg'
                 ),
-
                 {
                     caption:
                         `✨ Edited Image with "${textToOverlay}"\n\n👨‍💻 by @Utkarsh12011`
                 }
-
             );
 
             await ctx.api
@@ -618,7 +606,6 @@ bot.on(
 
         try {
 
-            // Download image
             const {
                 buffer,
                 mimeType
@@ -628,7 +615,6 @@ bot.on(
                     ctx.message.photo
                 );
 
-            // Save latest image
             pendingImages.set(
                 chatId,
                 {
@@ -638,10 +624,7 @@ bot.on(
                 }
             );
 
-            // ------------------------------------------------
-            // PHOTO WITHOUT CAPTION
-            // ------------------------------------------------
-
+            // Photo without caption
             if (!caption) {
 
                 await ctx.reply(
@@ -652,10 +635,7 @@ bot.on(
             }
 
 
-            // ------------------------------------------------
-            // PHOTO + /TEXT
-            // ------------------------------------------------
-
+            // Photo + /text command
             const editCommand =
                 caption.match(
                     /^\/(?:text|name|addtext|edit)(?:\s+(.*))?$/i
@@ -681,17 +661,14 @@ bot.on(
                         );
 
                     await ctx.replyWithPhoto(
-
                         new InputFile(
                             editedBuffer,
                             'edited.jpg'
                         ),
-
                         {
                             caption:
                                 `✨ Added "${textToOverlay}" to your image!\n\n👨‍💻 by @Utkarsh12011`
                         }
-
                     );
 
                     await ctx.api
@@ -722,10 +699,7 @@ bot.on(
             }
 
 
-            // ------------------------------------------------
-            // PHOTO + QUESTION
-            // ------------------------------------------------
-
+            // Photo + question
             const placeholder =
                 await ctx.reply(
                     "🖼️ Analyzing your image..."
@@ -895,18 +869,18 @@ bot.callbackQuery(
 
         } catch (error) {
 
-    console.error(
-        "History error:",
-        error.message
-    );
+            console.error(
+                "History error:",
+                error.message
+            );
 
-    await ctx.reply(
-        "❌ Couldn't load your conversation history right now."
-    );
+            await ctx.reply(
+                "❌ Couldn't load your conversation history right now."
+            );
 
-}
+        }
 
-}
+    }
 );
 
 
@@ -1057,4 +1031,369 @@ bot.callbackQuery(
         );
 
     }
+);
+
+
+// ============================================================
+// FONT INFO BUTTON
+// ============================================================
+
+bot.callbackQuery(
+    "btn_fonts_info",
+    async (ctx) => {
+
+        await ctx.answerCallbackQuery();
+
+        await ctx.reply(
+            "🔤 Font Generator\n\nUse:\n/font Your Text\n\nExample:\n/font Utkarsh\n\nI'll generate multiple Unicode font styles for you."
+        );
+
+    }
+);
+
+
+// ============================================================
+// IMAGE EDITOR INFO BUTTON
+// ============================================================
+
+bot.callbackQuery(
+    "btn_editor_info",
+    async (ctx) => {
+
+        await ctx.answerCallbackQuery();
+
+        await ctx.reply(
+            "🖼️ Image Editor\n\nSend a photo with:\n/text Your Name\n\nOr reply to an existing photo with:\n/text Your Name"
+        );
+
+    }
+);
+
+
+// ============================================================
+// TIPS BUTTON
+// ============================================================
+
+bot.callbackQuery(
+    "btn_tips",
+    async (ctx) => {
+
+        await ctx.answerCallbackQuery();
+
+        await ctx.reply(
+            "⚡ ChatPro Tips\n\n• Ask follow-up questions naturally\n• Send a photo and ask what is in it\n• Use /imagine for AI images\n• Use /font for stylish text\n• Use /text to edit photos\n• Use /newchat for a fresh conversation"
+        );
+
+    }
+);
+
+
+// ============================================================
+// CREATOR BUTTON
+// ============================================================
+
+bot.callbackQuery(
+    "btn_creator",
+    async (ctx) => {
+
+        await ctx.answerCallbackQuery();
+
+        await ctx.reply(
+            "👨‍💻 Created by @Utkarsh12011\n\n🤖 ChatPro AI\n⚡ Think. Create. Explore."
+        );
+
+    }
+);
+
+
+// ============================================================
+// NORMAL TEXT MESSAGE HANDLER
+// ============================================================
+
+bot.on(
+    'message:text',
+    async (ctx) => {
+
+        const userMessage =
+            ctx.message.text.trim();
+
+        // Commands are handled above
+        if (
+            userMessage.startsWith('/')
+        ) {
+            return;
+        }
+
+        const chatId =
+            ctx.chat.id.toString();
+
+
+        // ----------------------------------------------------
+        // PENDING IMAGE
+        // ----------------------------------------------------
+
+        const pending =
+            pendingImages.get(chatId);
+
+        if (pending) {
+
+            const age =
+                Date.now() -
+                pending.timestamp;
+
+            if (age <= IMAGE_EXPIRY) {
+
+                pendingImages.delete(
+                    chatId
+                );
+
+                const placeholder =
+                    await ctx.reply(
+                        "🖼️ Analyzing your image..."
+                    );
+
+                try {
+
+                    const answer =
+                        await analyzeImage(
+                            pending.buffer,
+                            pending.mimeType,
+                            userMessage
+                        );
+
+                    await ctx.api
+                        .editMessageText(
+                            ctx.chat.id,
+                            placeholder.message_id,
+                            answer
+                        )
+                        .catch(
+                            async () => {
+
+                                await ctx.reply(
+                                    answer
+                                );
+
+                            }
+                        );
+
+                } catch (error) {
+
+                    console.error(
+                        "Pending image analysis error:",
+                        error.message
+                    );
+
+                    await ctx.api
+                        .editMessageText(
+                            ctx.chat.id,
+                            placeholder.message_id,
+                            "❌ I couldn't analyze that image right now. Please try again."
+                        )
+                        .catch(() => {});
+
+                }
+
+                return;
+            }
+
+            pendingImages.delete(
+                chatId
+            );
+        }
+
+
+        // ----------------------------------------------------
+        // NORMAL AI CHAT
+        // ----------------------------------------------------
+
+        try {
+
+            const profile =
+                await db.getOrCreateUserProfile(
+                    chatId,
+                    ctx.from || {}
+                );
+
+            const chatDoc =
+                await db.getChatHistory(
+                    chatId
+                );
+
+            const history =
+                chatDoc.messages
+                    .slice(-20)
+                    .map(
+                        message => ({
+                            role:
+                                message.role,
+                            text:
+                                message.text
+                        })
+                    );
+
+            const answer =
+                await generateAIResponse(
+                    history,
+                    userMessage,
+                    profile
+                );
+
+            await db.addMessages(
+                chatId,
+                [
+                    {
+                        role: 'user',
+                        text: userMessage
+                    },
+                    {
+                        role: 'model',
+                        text: answer
+                    }
+                ]
+            );
+
+            await ctx.reply(
+                answer
+            );
+
+        } catch (error) {
+
+            console.error(
+                "Text chat error:",
+                error.message
+            );
+
+            await ctx.reply(
+                "❌ Something went wrong while processing your message. Please try again."
+            );
+
+        }
+
+    }
+);
+
+
+// ============================================================
+// BOT ERROR HANDLER
+// ============================================================
+
+bot.catch(
+    (error) => {
+
+        console.error(
+            "❌ Bot error:",
+            error.error
+        );
+
+    }
+);
+
+
+// ============================================================
+// HEALTH SERVER FOR RENDER
+// ============================================================
+
+const PORT =
+    Number(process.env.PORT) || 3000;
+
+const server =
+    http.createServer(
+        (req, res) => {
+
+            if (
+                req.url === '/' ||
+                req.url === '/health'
+            ) {
+
+                res.writeHead(
+                    200,
+                    {
+                        'Content-Type':
+                            'text/plain'
+                    }
+                );
+
+                res.end(
+                    'ChatPro AI is running 🚀'
+                );
+
+                return;
+            }
+
+            res.writeHead(
+                404,
+                {
+                    'Content-Type':
+                        'text/plain'
+                }
+            );
+
+            res.end(
+                'Not Found'
+            );
+
+        }
+    );
+
+
+// ============================================================
+// START HTTP SERVER
+// ============================================================
+
+server.listen(
+    PORT,
+    '0.0.0.0',
+    () => {
+
+        console.log(
+            `🌐 Health server running on port ${PORT}`
+        );
+
+    }
+);
+
+
+// ============================================================
+// START TELEGRAM BOT
+// ============================================================
+
+bot.start({
+    drop_pending_updates: true
+})
+    .then(
+        () => {
+
+            console.log(
+                "🤖 ChatPro AI bot started successfully!"
+            );
+
+        }
+    )
+    .catch(
+        (error) => {
+
+            console.error(
+                "❌ Failed to start bot:",
+                error
+            );
+
+            process.exit(1);
+
+        }
+    );
+
+
+// ============================================================
+// GRACEFUL SHUTDOWN
+// ============================================================
+
+process.once(
+    'SIGINT',
+    () => bot.stop()
+);
+
+process.once(
+    'SIGTERM',
+    () => bot.stop()
 );
