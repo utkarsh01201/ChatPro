@@ -1,5 +1,6 @@
 // ============================================================
 // ChatPro - AI Image Generation
+//
 // Priority:
 // 1. Cloudflare Workers AI - FLUX.1 Schnell
 // 2. Hugging Face - Stable Diffusion 3 Medium
@@ -12,39 +13,63 @@ async function generateImage(prompt) {
     // 1. CLOUDFLARE WORKERS AI - FLUX.1 SCHNELL
     // ========================================================
 
-    const cloudflareAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-    const cloudflareToken = process.env.CLOUDFLARE_API_TOKEN;
+    const cloudflareAccountId =
+        process.env.CLOUDFLARE_ACCOUNT_ID;
 
-    if (cloudflareAccountId && cloudflareToken) {
+    const cloudflareToken =
+        process.env.CLOUDFLARE_API_TOKEN;
+
+
+    if (
+        cloudflareAccountId &&
+        cloudflareToken
+    ) {
+
         try {
+
             console.log(
                 `☁️ [Cloudflare FLUX] Generating image for: "${prompt}"`
             );
+
 
             const url =
                 `https://api.cloudflare.com/client/v4/accounts/${cloudflareAccountId}` +
                 `/ai/run/@cf/black-forest-labs/flux-1-schnell`;
 
-            const response = await fetch(url, {
-                method: 'POST',
 
-                headers: {
-                    'Authorization': `Bearer ${cloudflareToken}`,
-                    'Content-Type': 'application/json'
-                },
+            const response =
+                await fetch(
+                    url,
+                    {
+                        method: 'POST',
 
-                body: JSON.stringify({
-                    prompt: prompt,
-                    steps: 4,
-                    seed: Math.floor(Math.random() * 2147483647)
-                }),
+                        headers: {
+                            'Authorization':
+                                `Bearer ${cloudflareToken}`,
 
-                signal: AbortSignal.timeout(30000)
-            });
+                            'Content-Type':
+                                'application/json'
+                        },
+
+                        // IMPORTANT:
+                        // Do NOT send seed.
+                        // Cloudflare REST API rejected it.
+                        body: JSON.stringify({
+                            prompt: prompt,
+                            steps: 4
+                        }),
+
+                        signal:
+                            AbortSignal.timeout(60000)
+                    }
+                );
+
 
             if (response.ok) {
 
-                const data = await response.json();
+                const data =
+                    await response.json();
+
 
                 if (
                     data &&
@@ -53,38 +78,56 @@ async function generateImage(prompt) {
                     data.result.image
                 ) {
 
-                    const buffer = Buffer.from(
-                        data.result.image,
-                        'base64'
-                    );
+                    const buffer =
+                        Buffer.from(
+                            data.result.image,
+                            'base64'
+                        );
 
-                    console.log(
-                        `✅ [Cloudflare FLUX] Image generated successfully (${buffer.length} bytes)`
-                    );
 
-                    return {
-                        buffer,
-                        provider: 'Cloudflare FLUX.1 Schnell'
-                    };
+                    if (buffer.length > 1000) {
+
+                        console.log(
+                            `✅ [Cloudflare FLUX] Image generated successfully (${buffer.length} bytes)`
+                        );
+
+
+                        return {
+                            buffer,
+                            provider:
+                                'Cloudflare FLUX.1 Schnell'
+                        };
+                    }
                 }
 
-                console.warn(
-                    '⚠️ Cloudflare response did not contain an image.'
-                );
 
                 console.warn(
-                    JSON.stringify(data).slice(0, 500)
+                    '⚠️ Cloudflare response did not contain a valid image.'
+                );
+
+
+                console.warn(
+                    JSON.stringify(data).slice(
+                        0,
+                        1000
+                    )
                 );
 
             } else {
 
-                const errorText = await response.text();
+                const errorText =
+                    await response.text();
+
 
                 console.warn(
                     `⚠️ Cloudflare returned ${response.status}:`,
-                    errorText.slice(0, 500)
+                    errorText.slice(
+                        0,
+                        1000
+                    )
                 );
             }
+
 
         } catch (cloudflareError) {
 
@@ -92,6 +135,7 @@ async function generateImage(prompt) {
                 `⚠️ Cloudflare generation failed: ${cloudflareError.message}`
             );
         }
+
     } else {
 
         console.warn(
@@ -104,7 +148,9 @@ async function generateImage(prompt) {
     // 2. HUGGING FACE - STABLE DIFFUSION 3 MEDIUM
     // ========================================================
 
-    const hfToken = process.env.HUGGINGFACE_API_KEY;
+    const hfToken =
+        process.env.HUGGINGFACE_API_KEY;
+
 
     if (hfToken) {
 
@@ -114,65 +160,99 @@ async function generateImage(prompt) {
                 `🤗 [Hugging Face] Generating image for: "${prompt}"`
             );
 
+
             const hfUrl =
                 'https://router.huggingface.co/hf-inference/models/' +
                 'stabilityai/stable-diffusion-3-medium-diffusers';
 
-            const response = await fetch(hfUrl, {
 
-                method: 'POST',
+            const response =
+                await fetch(
+                    hfUrl,
+                    {
+                        method: 'POST',
 
-                headers: {
-                    'Authorization': `Bearer ${hfToken}`,
-                    'Content-Type': 'application/json'
-                },
+                        headers: {
+                            'Authorization':
+                                `Bearer ${hfToken}`,
 
-                body: JSON.stringify({
-                    inputs: prompt
-                }),
+                            'Content-Type':
+                                'application/json'
+                        },
 
-                signal: AbortSignal.timeout(30000)
-            });
+                        body: JSON.stringify({
+                            inputs: prompt
+                        }),
+
+                        signal:
+                            AbortSignal.timeout(60000)
+                    }
+                );
+
 
             if (response.ok) {
 
                 const contentType =
-                    response.headers.get('content-type') || '';
+                    response.headers.get(
+                        'content-type'
+                    ) || '';
 
-                // Hugging Face normally returns image bytes
-                if (contentType.includes('image')) {
 
-                    const buffer = Buffer.from(
-                        await response.arrayBuffer()
-                    );
+                if (
+                    contentType.includes(
+                        'image'
+                    )
+                ) {
 
-                    console.log(
-                        `✅ [Hugging Face] Image generated successfully (${buffer.length} bytes)`
-                    );
+                    const buffer =
+                        Buffer.from(
+                            await response.arrayBuffer()
+                        );
 
-                    return {
-                        buffer,
-                        provider: 'Hugging Face SD3'
-                    };
+
+                    if (buffer.length > 1000) {
+
+                        console.log(
+                            `✅ [Hugging Face] Image generated successfully (${buffer.length} bytes)`
+                        );
+
+
+                        return {
+                            buffer,
+                            provider:
+                                'Hugging Face SD3'
+                        };
+                    }
                 }
 
-                // Sometimes an API can return JSON even with 200
-                const text = await response.text();
+
+                const text =
+                    await response.text();
+
 
                 console.warn(
                     '⚠️ Hugging Face returned unexpected response:',
-                    text.slice(0, 300)
+                    text.slice(
+                        0,
+                        500
+                    )
                 );
 
             } else {
 
-                const errorText = await response.text();
+                const errorText =
+                    await response.text();
+
 
                 console.warn(
                     `⚠️ Hugging Face returned ${response.status}:`,
-                    errorText.slice(0, 300)
+                    errorText.slice(
+                        0,
+                        500
+                    )
                 );
             }
+
 
         } catch (hfError) {
 
@@ -180,6 +260,7 @@ async function generateImage(prompt) {
                 `⚠️ Hugging Face generation failed: ${hfError.message}`
             );
         }
+
     } else {
 
         console.warn(
@@ -193,10 +274,15 @@ async function generateImage(prompt) {
     // ========================================================
 
     console.log(
-        `🌸 [Pollinations] Trying fallback image generation...`
+        '🌸 [Pollinations] Trying fallback image generation...'
     );
 
-    const encodedPrompt = encodeURIComponent(prompt);
+
+    const encodedPrompt =
+        encodeURIComponent(
+            prompt
+        );
+
 
     const models = [
         'turbo',
@@ -204,12 +290,18 @@ async function generateImage(prompt) {
         ''
     ];
 
-    for (const model of models) {
+
+    for (
+        const model of models
+    ) {
 
         try {
 
             const modelParam =
-                model ? `&model=${model}` : '';
+                model
+                    ? `&model=${model}`
+                    : '';
+
 
             const url =
                 `https://image.pollinations.ai/prompt/${encodedPrompt}` +
@@ -219,38 +311,57 @@ async function generateImage(prompt) {
                 `&seed=${Date.now()}` +
                 modelParam;
 
+
             console.log(
                 `🎨 [Pollinations] Trying model: ${model || 'default'}`
             );
 
-            const response = await fetch(url, {
-                method: 'GET',
-                signal: AbortSignal.timeout(35000)
-            });
+
+            const response =
+                await fetch(
+                    url,
+                    {
+                        method: 'GET',
+
+                        signal:
+                            AbortSignal.timeout(
+                                60000
+                            )
+                    }
+                );
+
 
             if (response.ok) {
 
-                const buffer = Buffer.from(
-                    await response.arrayBuffer()
-                );
+                const buffer =
+                    Buffer.from(
+                        await response.arrayBuffer()
+                    );
 
-                if (buffer.length > 1000) {
+
+                if (
+                    buffer.length > 1000
+                ) {
 
                     console.log(
                         `✅ [Pollinations] Image generated successfully using ${model || 'default'} (${buffer.length} bytes)`
                     );
 
+
                     return {
                         buffer,
+
                         provider:
                             `Pollinations (${model || 'default'})`
                     };
                 }
             }
 
+
             console.warn(
                 `⚠️ Pollinations ${model || 'default'} returned ${response.status}`
             );
+
 
         } catch (pollinationsError) {
 
