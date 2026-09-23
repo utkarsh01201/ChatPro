@@ -117,12 +117,14 @@ Ask me to create, generate, make or draw something.
 I'll directly generate the image.
 
 🖼️ Image Editing
-Reply to a photo with an editing instruction.
+Reply to a photo or image file with an editing instruction.
 
 Examples:
 "add a person to the background"
 "remove the car"
 "change the background to a beach"
+"make it PNG"
+"convert it to WEBP"
 
 🔤 Fonts
 /font Your Text
@@ -601,6 +603,283 @@ function isImageEditRequest(text) {
 
 
 // ============================================================
+// DETECT REQUESTED OUTPUT FORMAT
+// ============================================================
+
+function getRequestedImageFormat(
+    instruction,
+    originalMimeType = 'image/jpeg'
+) {
+
+    const text =
+        String(
+            instruction || ''
+        ).toLowerCase();
+
+    if (
+        /\b(jpeg|jpg)\b/i.test(text)
+    ) {
+        return 'jpeg';
+    }
+
+    if (
+        /\bpng\b/i.test(text)
+    ) {
+        return 'png';
+    }
+
+    if (
+        /\bwebp\b/i.test(text)
+    ) {
+        return 'webp';
+    }
+
+    if (
+        /\bavif\b/i.test(text)
+    ) {
+        return 'avif';
+    }
+
+    if (
+        /\btiff?\b/i.test(text)
+    ) {
+        return 'tiff';
+    }
+
+    if (
+        /\bgif\b/i.test(text)
+    ) {
+        return 'gif';
+    }
+
+    const mime =
+        String(
+            originalMimeType || ''
+        ).toLowerCase();
+
+    if (
+        mime.includes('png')
+    ) {
+        return 'png';
+    }
+
+    if (
+        mime.includes('webp')
+    ) {
+        return 'webp';
+    }
+
+    if (
+        mime.includes('avif')
+    ) {
+        return 'avif';
+    }
+
+    if (
+        mime.includes('tiff')
+    ) {
+        return 'tiff';
+    }
+
+    if (
+        mime.includes('gif')
+    ) {
+        return 'gif';
+    }
+
+    return 'jpeg';
+}
+
+
+// ============================================================
+// CONVERT EDITED IMAGE TO REQUESTED FORMAT
+// ============================================================
+
+async function convertEditedImage(
+    buffer,
+    format
+) {
+
+    const image =
+        sharp(buffer);
+
+    switch (format) {
+
+        case 'png':
+
+            return {
+                buffer:
+                    await image
+                        .png()
+                        .toBuffer(),
+
+                extension:
+                    'png',
+
+                mimeType:
+                    'image/png'
+            };
+
+
+        case 'webp':
+
+            return {
+                buffer:
+                    await image
+                        .webp({
+                            quality:
+                                95
+                        })
+                        .toBuffer(),
+
+                extension:
+                    'webp',
+
+                mimeType:
+                    'image/webp'
+            };
+
+
+        case 'avif':
+
+            return {
+                buffer:
+                    await image
+                        .avif({
+                            quality:
+                                90
+                        })
+                        .toBuffer(),
+
+                extension:
+                    'avif',
+
+                mimeType:
+                    'image/avif'
+            };
+
+
+        case 'tiff':
+
+            return {
+                buffer:
+                    await image
+                        .tiff({
+                            quality:
+                                95
+                        })
+                        .toBuffer(),
+
+                extension:
+                    'tiff',
+
+                mimeType:
+                    'image/tiff'
+            };
+
+
+        case 'gif':
+
+            /*
+             * Gemini returns a static image.
+             * A true animated GIF cannot be reconstructed
+             * from one Gemini output frame.
+             *
+             * Send a PNG instead so image quality is preserved.
+             */
+
+            return {
+                buffer:
+                    await image
+                        .png()
+                        .toBuffer(),
+
+                extension:
+                    'png',
+
+                mimeType:
+                    'image/png'
+            };
+
+
+        case 'jpeg':
+        default:
+
+            return {
+                buffer:
+                    await image
+                        .jpeg({
+                            quality:
+                                95
+                        })
+                        .toBuffer(),
+
+                extension:
+                    'jpg',
+
+                mimeType:
+                    'image/jpeg'
+            };
+    }
+}
+
+
+// ============================================================
+// SEND IMAGE IN THE MOST APPROPRIATE TELEGRAM FORMAT
+// ============================================================
+
+async function sendImageResult(
+    ctx,
+    imageBuffer,
+    format,
+    caption
+) {
+
+    const converted =
+        await convertEditedImage(
+            imageBuffer,
+            format
+        );
+
+
+    // ========================================================
+    // TELEGRAM PHOTO
+    //
+    // JPEG + PNG can be sent as photos.
+    // Other formats are sent as documents so the
+    // original requested file format is preserved.
+    // ========================================================
+
+    if (
+        converted.mimeType === 'image/jpeg' ||
+        converted.mimeType === 'image/png'
+    ) {
+
+        return await ctx.replyWithPhoto(
+            new InputFile(
+                converted.buffer,
+                `edited.${converted.extension}`
+            ),
+            {
+                caption
+            }
+        );
+    }
+
+
+    return await ctx.replyWithDocument(
+        new InputFile(
+            converted.buffer,
+            `edited.${converted.extension}`
+        ),
+        {
+            caption
+        }
+    );
+}
+
+
+// ============================================================
 // GENERATE AND SEND IMAGE
 // ============================================================
 
@@ -984,15 +1263,70 @@ async function downloadTelegramPhoto(
         );
     }
 
+    const buffer =
+        Buffer.from(
+            await response.arrayBuffer()
+        );
+
+    let mimeType =
+        'image/jpeg';
+
+    try {
+
+        const metadata =
+            await sharp(
+                buffer
+            ).metadata();
+
+        if (
+            metadata.format === 'png'
+        ) {
+            mimeType =
+                'image/png';
+        } else if (
+            metadata.format === 'webp'
+        ) {
+            mimeType =
+                'image/webp';
+        } else if (
+            metadata.format === 'avif'
+        ) {
+            mimeType =
+                'image/avif';
+        } else if (
+            metadata.format === 'tiff'
+        ) {
+            mimeType =
+                'image/tiff';
+        } else if (
+            metadata.format === 'gif'
+        ) {
+            mimeType =
+                'image/gif';
+        } else if (
+            metadata.format === 'heif' ||
+            metadata.format === 'heic'
+        ) {
+            mimeType =
+                'image/heic';
+        } else if (
+            metadata.format === 'jpeg'
+        ) {
+            mimeType =
+                'image/jpeg';
+        }
+
+    } catch (error) {
+
+        console.log(
+            'Image format detection failed:',
+            error.message
+        );
+    }
+
     return {
-
-        buffer:
-            Buffer.from(
-                await response.arrayBuffer()
-            ),
-
-        mimeType:
-            'image/jpeg'
+        buffer,
+        mimeType
     };
 }
 
@@ -1036,6 +1370,102 @@ async function downloadTelegramFile(
     return Buffer.from(
         await response.arrayBuffer()
     );
+}
+
+
+// ============================================================
+// TELEGRAM DOCUMENT IMAGE DOWNLOAD
+// ============================================================
+
+async function downloadTelegramImageDocument(
+    ctx,
+    document
+) {
+
+    if (!document?.file_id) {
+
+        throw new Error(
+            'No image document received.'
+        );
+    }
+
+    const buffer =
+        await downloadTelegramFile(
+            ctx,
+            document.file_id
+        );
+
+    let mimeType =
+        document.mime_type ||
+        '';
+
+    try {
+
+        const metadata =
+            await sharp(
+                buffer
+            ).metadata();
+
+        if (
+            metadata.format === 'jpeg'
+        ) {
+            mimeType =
+                'image/jpeg';
+        } else if (
+            metadata.format === 'png'
+        ) {
+            mimeType =
+                'image/png';
+        } else if (
+            metadata.format === 'webp'
+        ) {
+            mimeType =
+                'image/webp';
+        } else if (
+            metadata.format === 'avif'
+        ) {
+            mimeType =
+                'image/avif';
+        } else if (
+            metadata.format === 'tiff'
+        ) {
+            mimeType =
+                'image/tiff';
+        } else if (
+            metadata.format === 'gif'
+        ) {
+            mimeType =
+                'image/gif';
+        } else if (
+            metadata.format === 'heif'
+        ) {
+            mimeType =
+                'image/heif';
+        }
+
+    } catch (error) {
+
+        console.log(
+            'Document image format detection failed:',
+            error.message
+        );
+    }
+
+    if (
+        !mimeType.startsWith(
+            'image/'
+        )
+    ) {
+
+        throw new Error(
+            'The uploaded document is not a supported image.'
+        );
+    }
+
+    return {
+        buffer,
+        mimeType
+    };
 }
 
 
@@ -1184,7 +1614,7 @@ bot.on(
 
 
             // =================================================
-            // OLD /TEXT OVERLAY
+            // TEXT OVERLAY
             // =================================================
 
             const editCommand =
@@ -1321,6 +1751,198 @@ bot.on(
 
             await ctx.reply(
                 "❌ I couldn't process that photo."
+            );
+        }
+    }
+);
+
+
+// ============================================================
+// IMAGE DOCUMENT HANDLER
+//
+// Supports:
+// JPG / JPEG
+// PNG
+// WEBP
+// AVIF
+// TIFF
+// GIF
+// HEIC / HEIF where Sharp supports decoding
+// ============================================================
+
+bot.on(
+    'message:document',
+    async (ctx) => {
+
+        const document =
+            ctx.message.document;
+
+        const declaredMime =
+            String(
+                document.mime_type || ''
+            ).toLowerCase();
+
+        const filename =
+            String(
+                document.file_name || ''
+            ).toLowerCase();
+
+        const imageExtension =
+            /\.(jpg|jpeg|png|webp|avif|tif|tiff|gif|bmp|heic|heif)$/i
+                .test(filename);
+
+        if (
+            !declaredMime.startsWith('image/') &&
+            !imageExtension
+        ) {
+
+            return;
+        }
+
+        const chatId =
+            ctx.chat.id.toString();
+
+        const caption =
+            ctx.message.caption?.trim() ||
+            '';
+
+        try {
+
+            const {
+                buffer,
+                mimeType
+            } =
+                await downloadTelegramImageDocument(
+                    ctx,
+                    document
+                );
+
+            pendingImages.set(
+                chatId,
+                {
+                    buffer,
+                    mimeType,
+                    timestamp:
+                        Date.now()
+                }
+            );
+
+            if (!caption) {
+
+                await ctx.reply(
+                    '🖼️ Got the image file!\n\nAsk me something about it or reply to this file with an editing instruction.'
+                );
+
+                return;
+            }
+
+            const placeholder =
+                await ctx.reply(
+                    '🖼️ Processing your image...'
+                );
+
+            const stopTyping =
+                startTyping(ctx);
+
+            try {
+
+                if (
+                    isImageEditRequest(
+                        caption
+                    )
+                ) {
+
+                    const result =
+                        await editImage(
+                            buffer,
+                            mimeType,
+                            caption
+                        );
+
+                    if (
+                        !result ||
+                        !result.buffer
+                    ) {
+
+                        throw new Error(
+                            'No edited image returned.'
+                        );
+                    }
+
+                    const outputFormat =
+                        getRequestedImageFormat(
+                            caption,
+                            mimeType
+                        );
+
+                    await sendImageResult(
+                        ctx,
+                        result.buffer,
+                        outputFormat,
+                        `🎨 Edited with ${result.provider || 'Gemini 3.1 Flash Image'}\n\nFormat: ${outputFormat.toUpperCase()}\n\nEdit: "${caption.slice(0, 250)}"\n\n👨‍💻 @Utkarsh12011`
+                    );
+
+                    await ctx.api
+                        .deleteMessage(
+                            ctx.chat.id,
+                            placeholder.message_id
+                        )
+                        .catch(() => {});
+
+                } else {
+
+                    const answer =
+                        await analyzeImage(
+                            buffer,
+                            mimeType,
+                            caption
+                        );
+
+                    await ctx.api
+                        .editMessageText(
+                            ctx.chat.id,
+                            placeholder.message_id,
+                            answer
+                        )
+                        .catch(
+                            async () => {
+
+                                await ctx.reply(
+                                    answer
+                                );
+                            }
+                        );
+                }
+
+            } catch (error) {
+
+                console.error(
+                    'Document image processing error:',
+                    error.message
+                );
+
+                await ctx.api
+                    .editMessageText(
+                        ctx.chat.id,
+                        placeholder.message_id,
+                        "❌ I couldn't process that image."
+                    )
+                    .catch(() => {});
+
+            } finally {
+
+                stopTyping();
+            }
+
+        } catch (error) {
+
+            console.error(
+                'Image document handler error:',
+                error.message
+            );
+
+            await ctx.reply(
+                "❌ I couldn't process that image file."
             );
         }
     }
@@ -1501,22 +2123,40 @@ bot.on(
 
 
         // ====================================================
-        // 1. REPLY TO PHOTO
+        // 1. REPLY TO PHOTO OR IMAGE DOCUMENT
         // ====================================================
 
+        const repliedPhoto =
+            repliedMessage?.photo;
+
+        const repliedDocument =
+            repliedMessage?.document;
+
+        const repliedDocumentIsImage =
+            repliedDocument &&
+            (
+                String(
+                    repliedDocument.mime_type || ''
+                )
+                    .toLowerCase()
+                    .startsWith('image/')
+                ||
+                /\.(jpg|jpeg|png|webp|avif|tif|tiff|gif|bmp|heic|heif)$/i
+                    .test(
+                        String(
+                            repliedDocument.file_name || ''
+                        )
+                    )
+            );
+
         if (
-            repliedMessage?.photo
+            repliedPhoto ||
+            repliedDocumentIsImage
         ) {
 
 
             // =================================================
             // IMAGE EDITING
-            //
-            // Example:
-            //
-            // Reply to photo:
-            // "add Sachin Tendulkar to the bg"
-            //
             // =================================================
 
             if (
@@ -1535,14 +2175,43 @@ bot.on(
 
                 try {
 
-                    const {
-                        buffer,
+                    let buffer;
+                    let mimeType;
+
+                    if (repliedPhoto) {
+
+                        const downloaded =
+                            await downloadTelegramPhoto(
+                                ctx,
+                                repliedPhoto
+                            );
+
+                        buffer =
+                            downloaded.buffer;
+
+                        mimeType =
+                            downloaded.mimeType;
+
+                    } else {
+
+                        const downloaded =
+                            await downloadTelegramImageDocument(
+                                ctx,
+                                repliedDocument
+                            );
+
+                        buffer =
+                            downloaded.buffer;
+
+                        mimeType =
+                            downloaded.mimeType;
+                    }
+
+                    console.log(
+                        '🖼️ Source image MIME:',
                         mimeType
-                    } =
-                        await downloadTelegramPhoto(
-                            ctx,
-                            repliedMessage.photo
-                        );
+                    );
+
 
                     const result =
                         await editImage(
@@ -1561,16 +2230,72 @@ bot.on(
                         );
                     }
 
-                    await ctx.replyWithPhoto(
-                        new InputFile(
-                            result.buffer,
-                            'edited.png'
-                        ),
-                        {
-                            caption:
-                                `🎨 Edited with ${result.provider || 'Gemini 3.1 Flash Image'}\n\nEdit: "${userMessage.slice(0, 250)}"\n\n👨‍💻 @Utkarsh12011`
-                        }
+
+                    // =========================================
+                    // FORMAT SELECTION
+                    //
+                    // User can explicitly say:
+                    //
+                    // "make it PNG"
+                    // "convert to WEBP"
+                    // "give JPG"
+                    // "save as AVIF"
+                    //
+                    // Otherwise preserve the source format
+                    // whenever possible.
+                    // =========================================
+
+                    const outputFormat =
+                        getRequestedImageFormat(
+                            userMessage,
+                            mimeType
+                        );
+
+                    console.log(
+                        '📦 Output format:',
+                        outputFormat
                     );
+
+
+                    const converted =
+                        await convertEditedImage(
+                            result.buffer,
+                            outputFormat
+                        );
+
+
+                    const caption =
+                        `🎨 Edited with ${result.provider || 'Gemini 3.1 Flash Image'}\n\nFormat: ${converted.extension.toUpperCase()}\n\nEdit: "${userMessage.slice(0, 250)}"\n\n👨‍💻 @Utkarsh12011`;
+
+
+                    if (
+                        converted.mimeType === 'image/jpeg' ||
+                        converted.mimeType === 'image/png'
+                    ) {
+
+                        await ctx.replyWithPhoto(
+                            new InputFile(
+                                converted.buffer,
+                                `edited.${converted.extension}`
+                            ),
+                            {
+                                caption
+                            }
+                        );
+
+                    } else {
+
+                        await ctx.replyWithDocument(
+                            new InputFile(
+                                converted.buffer,
+                                `edited.${converted.extension}`
+                            ),
+                            {
+                                caption
+                            }
+                        );
+                    }
+
 
                     await ctx.api
                         .deleteMessage(
@@ -1617,14 +2342,37 @@ bot.on(
 
             try {
 
-                const {
-                    buffer,
-                    mimeType
-                } =
-                    await downloadTelegramPhoto(
-                        ctx,
-                        repliedMessage.photo
-                    );
+                let buffer;
+                let mimeType;
+
+                if (repliedPhoto) {
+
+                    const downloaded =
+                        await downloadTelegramPhoto(
+                            ctx,
+                            repliedPhoto
+                        );
+
+                    buffer =
+                        downloaded.buffer;
+
+                    mimeType =
+                        downloaded.mimeType;
+
+                } else {
+
+                    const downloaded =
+                        await downloadTelegramImageDocument(
+                            ctx,
+                            repliedDocument
+                        );
+
+                    buffer =
+                        downloaded.buffer;
+
+                    mimeType =
+                        downloaded.mimeType;
+                }
 
                 const answer =
                     await analyzeImage(
@@ -2171,7 +2919,7 @@ bot.callbackQuery(
         await ctx.answerCallbackQuery();
 
         await ctx.reply(
-            '🖼️ Reply to a photo with an instruction like:\n"add a person to the background"\n\nOr use:\n/text Your Text'
+            '🖼️ Reply to a photo or image file with:\n"add a person to the background"\n"remove the car"\n"change the background"\n\nYou can also request:\n"make it PNG"\n"convert to WEBP"\n"save as AVIF"\n\nOr use:\n/text Your Text'
         );
     }
 );
@@ -2192,6 +2940,9 @@ bot.callbackQuery(
 • Send photos for analysis
 • Reply to photos with questions
 • Reply to photos with editing instructions
+• Send JPG / PNG / WEBP / AVIF / TIFF image files
+• Reply to image files with editing instructions
+• Ask for PNG / JPG / WEBP / AVIF / TIFF output
 • Send stickers for analysis
 • Ask to generate/create/make/draw visual content
 • Use /imagine for direct image generation
