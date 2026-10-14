@@ -1,2 +1,11 @@
 node_modules/
 .env
+.env.*
+!.env.example
+temp_music/
+dist/
+*.raw
+.DS_Store
+*.log
+chatpro-react/node_modules/
+chatpro-react/dist/

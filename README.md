@@ -10,6 +10,7 @@ A powerful, emotionally intelligent Telegram AI assistant powered by **Google Ge
 | Feature | Description |
 |---------|-------------|
 | 💬 **AI Chat** | Natural conversations powered by Gemini + GPT-4o fallback |
+| 🎵 **AI Music Streaming** | Natural language music playback & search via Jamendo API |
 | 🧠 **Memory** | Remembers your name, facts, and conversation history |
 | 🎨 **Image Generation** | `/imagine` — AI image generation via HuggingFace + Pollinations |
 | 🖼️ **Image Library** | Browse your generated images with paginated gallery |
@@ -24,6 +25,7 @@ A powerful, emotionally intelligent Telegram AI assistant powered by **Google Ge
 - [Node.js](https://nodejs.org/) v18+
 - [MongoDB Atlas](https://www.mongodb.com/atlas) account
 - [Telegram Bot Token](https://t.me/BotFather)
+- [Jamendo Developer Account](https://devportal.jamendo.com) (Client ID)
 
 ### Installation
 
@@ -43,6 +45,11 @@ GEMINI_API_KEY=your_gemini_api_key
 MONGODB_URI=your_mongodb_connection_string
 OPENROUTER_API_KEY=your_openrouter_key
 HUGGINGFACE_API_KEY=your_huggingface_key
+JAMENDO_CLIENT_ID=your_jamendo_client_id
+JAMENDO_CLIENT_SECRET=your_jamendo_client_secret
+TELEGRAM_API_ID=your_telegram_api_id
+TELEGRAM_API_HASH=your_telegram_api_hash
+PORT=3000
 ```
 
 ### Run
@@ -57,11 +64,29 @@ node src/bot.js
 |---------|-------------|
 | `/start` | Launch ChatPro AI with interactive menu |
 | `/help` | View all features |
+| `/play [song/mood]` | Search and play track in chat with inline player controls |
+| `/pause` | Pause active chat playback |
+| `/resume` | Resume paused track |
+| `/skip` | Skip to the next track in chat queue |
+| `/stop` | Stop playback and clear current queue |
+| `/queue` | View upcoming tracks in the chat queue |
+| `/nowplaying` | Show details of the currently playing track |
+| `/vplay [query]` | Queue music for Group Voice Chat session (Mode B) |
 | `/imagine [prompt]` | Generate an AI image |
 | `/font [text]` | Convert text to fancy fonts |
 | `/text [name]` | Add text overlay to a photo |
 | `/newchat` | Start a fresh conversation |
 | `/about` | About ChatPro AI |
+
+### 🎵 Natural Language Music Examples
+
+ChatPro AI automatically detects music intents from conversational text:
+- *"Play relaxing music for studying"*
+- *"Play something energetic"*
+- *"Play piano melodies"*
+- *"Pause the song"* / *"Resume playback"*
+- *"Skip this track"* / *"Next song"*
+- *"Show my music queue"* / *"What's playing right now"*
 
 ## 🏗️ Architecture
 

@@ -30,9 +30,25 @@ const {
 
 const db = require('./db');
 
+const {
+    handleMusicPlay,
+    handleDirectMessageAudio,
+    handleMusicPause,
+    handleMusicResume,
+    handleMusicSkip,
+    handleMusicPrev,
+    handleMusicStop,
+    handleMusicQueue,
+    handleMusicNowPlaying,
+    handleMusicCallback,
+    handleVoiceChatCommand
+} = require('./musicHandler');
 
-// ============================================================
-// BOT
+const {
+    detectMusicIntent
+} = require('./musicIntent');
+
+const { initAssistant } = require('./assistantLive');
 // ============================================================
 
 const bot =
@@ -40,6 +56,48 @@ const bot =
         process.env.TELEGRAM_BOT_TOKEN
     );
 
+// ============================================================
+// GLOBAL INCOMING LOGGER & GROUP JOIN HANDLERS
+// ============================================================
+
+bot.use(async (ctx, next) => {
+    if (ctx.message) {
+        const type = ctx.chat?.type || 'unknown';
+        const title = ctx.chat?.title || ctx.chat?.username || ctx.chat?.id;
+        const from = ctx.from?.username ? `@${ctx.from.username}` : (ctx.from?.first_name || ctx.from?.id);
+        const text = ctx.message.text || ctx.message.caption || '';
+        if (text) {
+            console.log(`📩 [Msg] [${type}] [${title}] ${from}: "${text.slice(0, 60)}"`);
+        }
+    }
+    await next();
+});
+
+// Automatic welcome & setup when bot is added to any new group chat
+bot.on('my_chat_member', async (ctx) => {
+    const status = ctx.myChatMember?.new_chat_member?.status;
+    const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
+    if (isGroup && (status === 'member' || status === 'administrator')) {
+        console.log(`🎉 [Group] Bot added to group "${ctx.chat.title}" (${ctx.chat.id}) with status: ${status}`);
+        const assistantHandle = process.env.ASSISTANT_USERNAME || 'Shreyash1201';
+        const welcomeKeyboard = new InlineKeyboard()
+            .url('➕ Add Singing Assistant', `https://t.me/${assistantHandle}`)
+            .row()
+            .text('🎵 Music Guide', 'btn_music_guide')
+            .text('❓ Help Menu', 'btn_help');
+
+        await ctx.reply(
+            `👋 **Hello everyone in ${ctx.chat.title || 'the group'}!**\n\n` +
+            `I am **ChatPro AI & Live Music Bot**!\n\n` +
+            `🎙️ **To listen to live music in Group Voice Chat:**\n` +
+            `1. Tap **➕ Add Singing Assistant** below to add @${assistantHandle}\n` +
+            `2. Start a **Voice Chat** in this group (tap group header -> ⋮ -> Start Voice Chat)\n` +
+            `3. Type: \`/play [song name]\`\n\n` +
+            `The assistant will join the call and stream 320kbps audio live for everyone! 🎶`,
+            { parse_mode: 'Markdown', reply_markup: welcomeKeyboard }
+        ).catch(() => {});
+    }
+});
 
 // ============================================================
 // CONFIG
@@ -129,6 +187,11 @@ Examples:
 🔤 Fonts
 /font Your Text
 
+🎵 AI Music Streaming
+Play tracks, artists, moods directly in chat or voice channels!
+Natural requests: "play relaxing music for study", "skip song", "pause playback"
+Commands: /play [query], /pause, /resume, /skip, /stop, /queue, /np
+
 ━━━━━━━━━━━━━━━━━━
 
 Commands:
@@ -137,6 +200,10 @@ Commands:
 /help
 /newchat
 /clear
+/play [query]
+/pause | /resume | /skip | /stop
+/queue | /nowplaying
+/vplay [query] (Voice Chat)
 /imagine [prompt]
 /font [text]
 /text [text]
@@ -158,6 +225,7 @@ Think. Create. Explore. ⚡
 🎨 Image Generation
 🖼️ Image Editing
 🔤 Fonts
+🎵 AI Music Streaming (Jamendo & Web/Voice)
 
 🚀 Built for what's next.
 
@@ -166,70 +234,100 @@ Think. Create. Explore. ⚡
 
 
 // ============================================================
-// KEYBOARD
+// MUSIC GUIDE & DETAILED SECTION
+// ============================================================
+
+const musicGuideMessage = `🎵 ━━━━━━━━━━━━━━━━━━━━━━━━━
+✨ CHATPRO AI — MUSIC & AUDIO STUDIO ✨
+━━━━━━━━━━━━━━━━━━━━━━━━━━ 🎵
+
+Welcome to ChatPro's next-generation Music Engine! Enjoy full-length studio tracks in your private DMs, or invite our live assistant to sing and stream high-fidelity audio inside group Voice Chats (VC).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎧 1. PRIVATE DMS — FULL STUDIO AUDIO (320kbps)
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Delivers full-length, uncompressed studio tracks directly into your private chat.
+• Interactive playback card with real-time controls:
+  ⏸️ Pause  |  ▶️ Resume  |  ⏭️ Skip  |  ⏮️ Previous  |  📜 Queue  |  ⏹️ Stop
+• Direct high-speed download so you can listen offline anytime.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎙️ 2. GROUP VOICE CHAT (VC) — LIVE ASSISTANT
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Assistant UserBot (@Shreyash1201) joins your group Voice Call on demand.
+• Crystal-clear 48kHz stereo WebRTC audio with ZERO buzzing, lag, or distortion!
+• High-performance multi-group queue management.
+• Commands for Voice Chat:
+  - /vplay [song name] — Summon assistant to start singing in VC
+  - /play [song name] (in any group) — Automatically starts in VC!
+  - /dmplay [song name] — While in a group, sends the audio file to your DM!
+  - /pause, /resume, /skip, /stop — Live VC playback controls
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+🤖 3. NATURAL LANGUAGE INTELLIGENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+No need to remember slash commands! ChatPro understands everyday language:
+• "play Kesariya"
+• "play Khaab by Akhil"
+• "play relaxing lofi music for study"
+• "assistant sing live in vc"
+• "skip this song" or "next track"
+• "pause the music" or "resume playback"
+• "show my music queue"
+• "what song is playing right now?"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 4. COMPLETE COMMAND REFERENCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+• /play [song/artist/mood] — Play track in DMs or Group VC
+• /vplay [song] — Live Assistant singing in Group Voice Chat
+• /dmplay [song] — Direct studio track file delivery to your DMs
+• /pause — Pause playback
+• /resume — Resume playback
+• /skip (or /next) — Skip to the next queued track
+• /prev (or /previous) — Replay previous track
+• /stop — Stop playback and clear the queue
+• /queue (or /q) — View upcoming songs in queue
+• /nowplaying (or /np) — Current song title, artist & duration
+• /music — Reopen this comprehensive Music Guide
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌟 Tap any sample button below to try it instantly!`;
+
+function buildMusicGuideKeyboard() {
+    return new InlineKeyboard()
+        .text('▶️ Sample: Khaab', 'music_sample_khaab')
+        .text('▶️ Sample: Kesariya', 'music_sample_kesariya')
+        .row()
+        .text('📜 View Queue', 'music_btn_queue')
+        .text('🎧 Now Playing', 'music_btn_np')
+        .row()
+        .text('❓ Help Menu', 'btn_help')
+        .text('🔙 Main Menu', 'btn_main_menu');
+}
+
+// ============================================================
+// KEYBOARDS
 // ============================================================
 
 function buildStartKeyboard() {
-
     return new InlineKeyboard()
-
-        .text(
-            '❓ Help',
-            'btn_help'
-        )
-
-        .text(
-            '🆕 New Chat',
-            'btn_newchat'
-        )
-
+        .text('🎵 Music Studio & VC Player', 'btn_music_guide')
         .row()
-
-        .text(
-            '📜 History',
-            'btn_history'
-        )
-
-        .text(
-            'ℹ️ About',
-            'btn_about'
-        )
-
+        .text('❓ Help', 'btn_help')
+        .text('🆕 New Chat', 'btn_newchat')
         .row()
-
-        .text(
-            '🎨 Image Library',
-            'btn_library_0'
-        )
-
-        .text(
-            '🔤 Fonts',
-            'btn_fonts_info'
-        )
-
+        .text('📜 History', 'btn_history')
+        .text('ℹ️ About', 'btn_about')
         .row()
-
-        .text(
-            '🖼️ Image Editor',
-            'btn_editor_info'
-        )
-
-        .text(
-            '⚡ Tips',
-            'btn_tips'
-        )
-
+        .text('🎨 Image Library', 'btn_library_0')
+        .text('🔤 Fonts', 'btn_fonts_info')
         .row()
-
-        .text(
-            '👨‍💻 Created By',
-            'btn_creator'
-        )
-
-        .url(
-            '🌟 Community',
-            'https://t.me/shiddatXXSociety'
-        );
+        .text('🖼️ Image Editor', 'btn_editor_info')
+        .text('⚡ Tips', 'btn_tips')
+        .row()
+        .text('👨‍💻 Created By', 'btn_creator')
+        .url('🌟 Community', 'https://t.me/shiddatXXSociety');
 }
 
 
@@ -1032,13 +1130,15 @@ bot.command(
 
         try {
 
+            const startVideoCaption = `🤖 ChatPro AI — Think. Create. Explore. ⚡\n\n💬 Chat, Code, Vision & Deep Reasoning\n🎨 AI Image Generation & Editing (/imagine)\n🔤 Unicode Typography Studio (/font)\n🎵 Full Studio & Live VC Music Streaming (/play, /music)\n\n👇 Tap below to explore all features & guides:`;
+
             if (cachedVideoFileId) {
 
                 await ctx.replyWithVideo(
                     cachedVideoFileId,
                     {
                         caption:
-                            startMessage,
+                            startVideoCaption,
 
                         reply_markup:
                             keyboard
@@ -1062,7 +1162,7 @@ bot.command(
                     ),
                     {
                         caption:
-                            startMessage,
+                            startVideoCaption,
 
                         reply_markup:
                             keyboard
@@ -1218,6 +1318,142 @@ bot.command(
                     'Markdown'
             }
         );
+    }
+);
+
+
+// ============================================================
+// MUSIC COMMANDS & CONTROLS
+// ============================================================
+
+bot.command(
+    'play',
+    async (ctx) => {
+        await ctx.deleteMessage().catch(() => {});
+        let query = ctx.match?.trim() || '';
+        if (!query) {
+            await ctx.reply(
+                musicGuideMessage,
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: buildMusicGuideKeyboard()
+                }
+            );
+            return;
+        }
+        const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
+        if (isGroup) {
+            if (/^live\s+/i.test(query)) {
+                query = query.replace(/^live\s+/i, '').trim();
+            }
+            await handleVoiceChatCommand(ctx, 'vplay', query);
+            return;
+        }
+        if (/^live\s+/i.test(query)) {
+            query = query.replace(/^live\s+/i, '').trim();
+            await handleVoiceChatCommand(ctx, 'vplay', query);
+            return;
+        }
+        await handleMusicPlay(ctx, query);
+    }
+);
+
+bot.command(
+    'music',
+    async (ctx) => {
+        await ctx.deleteMessage().catch(() => {});
+        await ctx.reply(
+            musicGuideMessage,
+            {
+                parse_mode: 'Markdown',
+                reply_markup: buildMusicGuideKeyboard()
+            }
+        );
+    }
+);
+
+bot.command(
+    ['dmplay', 'playfile'],
+    async (ctx) => {
+        await ctx.deleteMessage().catch(() => {});
+        const query = ctx.match?.trim() || '';
+        await handleDirectMessageAudio(ctx, query);
+    }
+);
+
+bot.command(
+    'pause',
+    async (ctx) => {
+        await ctx.deleteMessage().catch(() => {});
+        await handleMusicPause(ctx);
+    }
+);
+
+bot.command(
+    'resume',
+    async (ctx) => {
+        await ctx.deleteMessage().catch(() => {});
+        await handleMusicResume(ctx);
+    }
+);
+
+bot.command(
+    ['skip', 'next'],
+    async (ctx) => {
+        await ctx.deleteMessage().catch(() => {});
+        await handleMusicSkip(ctx);
+    }
+);
+
+bot.command(
+    ['prev', 'previous'],
+    async (ctx) => {
+        await ctx.deleteMessage().catch(() => {});
+        await handleMusicPrev(ctx);
+    }
+);
+
+bot.command(
+    'stop',
+    async (ctx) => {
+        await ctx.deleteMessage().catch(() => {});
+        await handleMusicStop(ctx);
+    }
+);
+
+bot.command(
+    ['queue', 'q'],
+    async (ctx) => {
+        await ctx.deleteMessage().catch(() => {});
+        await handleMusicQueue(ctx);
+    }
+);
+
+bot.command(
+    ['nowplaying', 'np'],
+    async (ctx) => {
+        await ctx.deleteMessage().catch(() => {});
+        await handleMusicNowPlaying(ctx);
+    }
+);
+
+// Group Voice Chat Live Assistant commands
+bot.command(
+    ['vplay', 'playlive', 'live', 'vpause', 'vresume', 'vskip', 'vstop', 'vqueue', 'vstatus'],
+    async (ctx) => {
+        await ctx.deleteMessage().catch(() => {});
+        let cmd = ctx.message.text.split(' ')[0].replace('/', '').toLowerCase();
+        if (cmd === 'playlive' || cmd === 'live') cmd = 'vplay';
+        const args = ctx.match?.trim() || '';
+        await handleVoiceChatCommand(ctx, cmd, args);
+    }
+);
+
+// Music inline button callback queries
+bot.callbackQuery(
+    /^(m_|vc_)/,
+    async (ctx) => {
+        await handleMusicCallback(ctx);
     }
 );
 
@@ -2115,6 +2351,58 @@ bot.on(
             return;
         }
 
+        // ====================================================
+        // MUSIC INTENT DETECTION (Natural language)
+        // ====================================================
+
+        const musicIntent = await detectMusicIntent(userMessage);
+        if (musicIntent) {
+            console.log('🎵 [Music] Natural language intent detected:', musicIntent);
+            if (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup') {
+                await ctx.deleteMessage().catch(() => {});
+            }
+            if (musicIntent.action === 'vplay') {
+                await handleVoiceChatCommand(ctx, 'vplay', musicIntent.query);
+                return;
+            }
+            if (musicIntent.action === 'dmplay') {
+                await handleDirectMessageAudio(ctx, musicIntent.query);
+                return;
+            }
+            if (musicIntent.action === 'play') {
+                await handleMusicPlay(ctx, musicIntent.query);
+                return;
+            }
+            if (musicIntent.action === 'pause') {
+                await handleMusicPause(ctx);
+                return;
+            }
+            if (musicIntent.action === 'resume') {
+                await handleMusicResume(ctx);
+                return;
+            }
+            if (musicIntent.action === 'skip') {
+                await handleMusicSkip(ctx);
+                return;
+            }
+            if (musicIntent.action === 'prev') {
+                await handleMusicPrev(ctx);
+                return;
+            }
+            if (musicIntent.action === 'stop') {
+                await handleMusicStop(ctx);
+                return;
+            }
+            if (musicIntent.action === 'queue') {
+                await handleMusicQueue(ctx);
+                return;
+            }
+            if (musicIntent.action === 'nowplaying') {
+                await handleMusicNowPlaying(ctx);
+                return;
+            }
+        }
+
         const chatId =
             ctx.chat.id.toString();
 
@@ -2965,6 +3253,65 @@ bot.callbackQuery(
     }
 );
 
+bot.callbackQuery(
+    'btn_music_guide',
+    async (ctx) => {
+        await ctx.answerCallbackQuery();
+        await ctx.reply(
+            musicGuideMessage,
+            {
+                parse_mode: 'Markdown',
+                reply_markup: buildMusicGuideKeyboard()
+            }
+        );
+    }
+);
+
+bot.callbackQuery(
+    'btn_main_menu',
+    async (ctx) => {
+        await ctx.answerCallbackQuery();
+        await ctx.reply(
+            startMessage,
+            {
+                reply_markup: buildStartKeyboard()
+            }
+        );
+    }
+);
+
+bot.callbackQuery(
+    'music_sample_khaab',
+    async (ctx) => {
+        await ctx.answerCallbackQuery('▶️ Playing sample: Khaab...');
+        await handleMusicPlay(ctx, 'khaab');
+    }
+);
+
+bot.callbackQuery(
+    'music_sample_kesariya',
+    async (ctx) => {
+        await ctx.answerCallbackQuery('▶️ Playing sample: Kesariya...');
+        await handleMusicPlay(ctx, 'kesariya');
+    }
+);
+
+bot.callbackQuery(
+    'music_btn_queue',
+    async (ctx) => {
+        await ctx.answerCallbackQuery();
+        await handleMusicQueue(ctx);
+    }
+);
+
+bot.callbackQuery(
+    'music_btn_np',
+    async (ctx) => {
+        await ctx.answerCallbackQuery();
+        await handleMusicNowPlaying(ctx);
+    }
+);
+
 
 // ============================================================
 // ERROR HANDLER
@@ -2990,41 +3337,18 @@ const PORT =
         process.env.PORT
     ) || 3000;
 
+const { handleWebRequest } = require('./webApi');
+
 const server =
     http.createServer(
         (req, res) => {
-
-            if (
-                req.url === '/' ||
-                req.url === '/health'
-            ) {
-
-                res.writeHead(
-                    200,
-                    {
-                        'Content-Type':
-                            'text/plain'
-                    }
-                );
-
-                res.end(
-                    'ChatPro AI is running 🚀'
-                );
-
-                return;
-            }
-
-            res.writeHead(
-                404,
-                {
-                    'Content-Type':
-                        'text/plain'
+            handleWebRequest(req, res).catch(err => {
+                console.error('Web API unhandled error:', err);
+                if (!res.headersSent) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Internal Server Error' }));
                 }
-            );
-
-            res.end(
-                'Not Found'
-            );
+            });
         }
     );
 
@@ -3042,13 +3366,49 @@ server.listen(
 
 
 // ============================================================
-// START BOT
+// REGISTER COMMANDS IN TELEGRAM MENU
 // ============================================================
+
+async function registerBotCommands() {
+    try {
+        await bot.api.setMyCommands([
+            { command: 'start', description: '🚀 Start ChatPro AI & Main Menu' },
+            { command: 'play', description: '🎵 Stream Music (DMs & Voice Chat)' },
+            { command: 'vplay', description: '🎙️ Live Voice Chat Music Assistant' },
+            { command: 'music', description: '🎶 Music Studio & Full Guide' },
+            { command: 'pause', description: '⏸️ Pause Current Playback' },
+            { command: 'resume', description: '▶️ Resume Music Playback' },
+            { command: 'skip', description: '⏭️ Skip to Next Song' },
+            { command: 'prev', description: '⏮️ Replay / Previous Song' },
+            { command: 'stop', description: '⏹️ Stop Playback & Clear Queue' },
+            { command: 'queue', description: '📜 Show Current Music Queue' },
+            { command: 'nowplaying', description: '🎧 Currently Playing Track Details' },
+            { command: 'dmplay', description: '📩 Deliver Full 320kbps Track to DM' },
+            { command: 'help', description: '❓ Comprehensive Help & Commands' },
+            { command: 'imagine', description: '🎨 Generate AI Art from Prompt' },
+            { command: 'font', description: '🔤 Stylize Text in 9+ Unicode Fonts' },
+            { command: 'newchat', description: '🆕 Start Fresh Chat & Clear Context' },
+            { command: 'clear', description: '🧹 Clear Chat History' },
+            { command: 'about', description: 'ℹ️ About ChatPro AI & Creator' },
+        ]);
+        console.log('✅ [Telegram] Bot command menu registered with all Play & Chat options!');
+    } catch (err) {
+        console.warn('⚠️ [Telegram] setMyCommands notice:', err.message);
+    }
+}
+
+
+// ============================================================
+// START BOT & ASSISTANT
+// ============================================================
+
+initAssistant().catch(err => console.warn('ℹ️ [Assistant] Init notice:', err.message));
+registerBotCommands().catch(err => console.warn('ℹ️ [Commands] Register notice:', err.message));
 
 bot.start(
     {
-        drop_pending_updates:
-            true
+        drop_pending_updates: false,
+        allowed_updates: ['message', 'edited_message', 'callback_query', 'my_chat_member', 'chat_member']
     }
 )
     .then(
@@ -3061,13 +3421,17 @@ bot.start(
     )
     .catch(
         (error) => {
-
             console.error(
-                '❌ Failed to start bot:',
-                error
+                '⚠️ Telegram Bot update conflict/error:',
+                error.message || error
             );
-
-            process.exit(1);
+            console.log(
+                '🌐 Web API server on port ' + PORT + ' remains fully operational!'
+            );
+            // Retry Telegram polling after a brief pause
+            setTimeout(() => {
+                bot.start({ drop_pending_updates: true }).catch(() => {});
+            }, 6000);
         }
     );
 

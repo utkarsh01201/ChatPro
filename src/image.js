@@ -285,9 +285,8 @@ async function generateImage(prompt) {
 
 
     const models = [
-        'turbo',
-        'flux',
-        ''
+        '',
+        'turbo'
     ];
 
 
@@ -304,12 +303,8 @@ async function generateImage(prompt) {
 
 
             const url =
-                `https://image.pollinations.ai/prompt/${encodedPrompt}` +
-                `?width=768` +
-                `&height=768` +
-                `&nologo=true` +
-                `&seed=${Date.now()}` +
-                modelParam;
+                `https://image.pollinations.ai/prompt/${encodedPrompt}?nologo=true` +
+                (model ? `&model=${model}` : '');
 
 
             console.log(

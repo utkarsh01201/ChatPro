@@ -1,0 +1,74 @@
+.footer { padding: 48px 0 36px; }
+
+.topLine {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(124,58,237,0.3), rgba(6,182,212,0.3), transparent);
+  margin-bottom: 48px;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo {
+  width: 34px;
+  height: 34px;
+  background: linear-gradient(135deg, #7c3aed, #06b6d4);
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 900;
+  color: #fff;
+  box-shadow: 0 0 14px rgba(124,58,237,0.4);
+}
+
+.brandName {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.ai {
+  background: linear-gradient(135deg, #a855f7, #06b6d4);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.tagline {
+  font-size: 13px;
+  color: #334155;
+}
+
+.links {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.links a {
+  font-size: 13px;
+  color: #475569;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.links a:hover { color: #a78bfa; }
+
+.dot { color: #1e293b; font-size: 16px; }
+
+.copy { font-size: 12px; color: #1e293b; }
